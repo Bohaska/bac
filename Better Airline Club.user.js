@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BAC UP (with H/T/D/T)
 // @namespace    http://tampermonkey.net/
-// @version      1.0.0
+// @version      1.0.1
 // @description  try to take over the world!
 // @author       Aphix/Torus (original cost per PAX by Alrianne), mdons, bohaska (Fly or die)
 // @match        https://*.airline-club.com/
@@ -345,7 +345,7 @@
         if (!$("#paxOrigin").length) {
 			$("#linkProfit").parent().before(`<div class="table-row">
             <div class="label">
-            <h5>Pax (H/T/D/T):
+            <h5>Origin (H/T/D/T):
             <div class="tooltip">
 <img src="/assets/images/icons/information.png">
 <span class="tooltiptext below" style="white-space: nowrap;">H: Pax from home airport<br>T: Transit pax going through home airport<br>D: Pax from destination airport<br>T: Transit pax going through destination airport
@@ -356,13 +356,31 @@
             <div class="value" id="paxOrigin"></div>
         </div>`);
 		};
+        if (!$("#paxType").length) {
+			$("#paxOrigin").parent().after(`<div class="table-row">
+            <div class="label">
+            <h5>Type (B/S/L):
+            <div class="tooltip">
+<img src="/assets/images/icons/information.png">
+<span class="tooltiptext below" style="white-space: nowrap;">B: Budget pax (Cares about price)<br>S: Swift pax (Cares about frequency)<br>L: Compehensive + Brand Aware + Elite pax (Cares about quality & loyalty)<br>L pax are 3x better at generating loyalists compared to B and S pax<br>Check the survey button for more info on pax types
+<br></span>
+</div>
+            </h5>
+            </div>
+            <div class="value" id="paxType"></div>
+        </div>`);
+		};
         $("#paxOrigin").text(``);
+        $("#paxType").text(``);
         const survey = await _request(`airlines/${airlineId}/link-composition/${link.id}`);
         const passengerMap = await _request(`airlines/${airlineId}/related-link-consumption/${link.id}?cycleDelta=0&economy=true&business=true&first=true`);
         var homeAirportPax = 0;
         var destinationAirportPax = 0;
         var homeTransitPax = 0;
         var destinationTransitPax = 0;
+        var budgetPax = 0;
+        var swiftPax = 0;
+        var loyalistPax = 0;
         for (var i = 0; i < survey.homeAirports.length; i++) {
             if (survey.homeAirports[i].airport === `${link.fromAirportCity}(${link.fromAirportCode})`) {
                 homeAirportPax = survey.homeAirports[i].passengerCount;
@@ -394,7 +412,21 @@
                 }
             }
         }
+        for (i = 0; i < survey.preferenceType.length; i++) {
+            if (survey.preferenceType[i].title === "Budget") {
+                budgetPax += survey.preferenceType[i].passengerCount
+            } else {
+                if (survey.preferenceType[i].title === "Swift") {
+                    swiftPax += survey.preferenceType[i].passengerCount
+                } else {
+                    if (["Comprehensive", "Brand Conscious", "Elite"].includes(survey.preferenceType[i].title)) {
+                        loyalistPax += survey.preferenceType[i].passengerCount
+                    }
+                }
+            }
+        }
         $("#paxOrigin").text(`${homeAirportPax}/${homeTransitPax}/${destinationAirportPax}/${destinationTransitPax}`);
+        $("#paxType").text(`${budgetPax}/${swiftPax}/${loyalistPax}`);
     }
 
 	async function loadLink(airlineId, linkId) {
