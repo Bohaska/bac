@@ -758,7 +758,7 @@
 
 				row.append("<div style='" + getKeyedStyleFromLink(link, "totalLoadFactor", 0, 100) + "' class='cell' align='right'>" + lfBreakdownText + "%" + "</div>");
 
-				row.append("<div style='" + getKeyedStyleFromLink(link, "satisfaction", 0.6, 1) + "' class='cell' align='right'>" + Math.round(Math.min(link.satisfaction - 0.6, 0) * 250) + "%" + "</div>");
+				row.append("<div style='" + getKeyedStyleFromLink(link, "satisfaction", 0.6, 1) + "' class='cell' align='right'>" + Math.round(Math.max(link.satisfaction - 0.6, 0) * 250) + "%" + "</div>");
 				row.append(
 					"<div style='" +
 						getKeyedStyleFromLink(link, "revenue") +
