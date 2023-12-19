@@ -108,7 +108,7 @@
 			//'color:#B30E0E;text-shadow:0px 0px 2px #CCC;',
 
 			"color:#FF6969;",
-			"color:#FF3D3D;font-weight: bold;",
+			"color:#E43939;font-weight: bold;",
 			// 'color:#FF3D3D;text-decoration:underline',
 		];
 
@@ -831,10 +831,6 @@
 
 				if (tiersRank < 2) {
 					row.css({ "text-shadow": "0 0 3px gold" });
-				}
-
-				if (tiersRank > 27) {
-					row.css({ "text-shadow": "0 0 3px red" });
 				}
 
 				linksTable.append(row);
