@@ -641,7 +641,7 @@
             <div class="cell clickable" style="width: ${widths[4]}%" align="right" data-sort-property="totalCapacity" data-sort-order="ascending" onclick="toggleLinksTableSortOrder($(this))">Capacity (Freq.)</div>
             <div class="cell clickable" style="width: ${widths[5]}%" align="right" data-sort-property="totalPassengers" data-sort-order="ascending" onclick="toggleLinksTableSortOrder($(this))">Pax</div>
             <div class="cell clickable" style="width: ${widths[6]}%" align="right" data-sort-property="totalLoadFactor" data-sort-order="ascending" onclick="toggleLinksTableSortOrder($(this))" title="Load Factor">LF</div>
-            <div class="cell clickable" style="width: ${widths[7]}%" align="right" data-sort-property="satisfaction" data-sort-order="ascending" onclick="toggleLinksTableSortOrder($(this))" title="Satisfaction Factor">SF</div>
+            <div class="cell clickable" style="width: ${widths[7]}%" align="right" data-sort-property="satisfaction" data-sort-order="ascending" onclick="toggleLinksTableSortOrder($(this))" title="Satisfaction Factor (Adjusted to equal loyalist conversion rate)">SF</div>
             <div class="cell clickable" style="width: ${widths[8]}%" align="right" data-sort-property="revenue" data-sort-order="ascending" onclick="toggleLinksTableSortOrder($(this))">Revenue</div>
             <div class="cell clickable" style="width: ${widths[9]}%" align="right" data-sort-property="profit" data-sort-order="descending" onclick="toggleLinksTableSortOrder($(this))">Profit</div>
             <div class="cell clickable" style="width: ${widths[10]}%" align="right" data-sort-property="profitMargin" data-sort-order="ascending" onclick="toggleLinksTableSortOrder($(this))">Gain</div>
@@ -758,7 +758,7 @@
 
 				row.append("<div style='" + getKeyedStyleFromLink(link, "totalLoadFactor", 0, 100) + "' class='cell' align='right'>" + lfBreakdownText + "%" + "</div>");
 
-				row.append("<div style='" + getKeyedStyleFromLink(link, "satisfaction", 0, 1) + "' class='cell' align='right'>" + Math.round(link.satisfaction * 100) + "%" + "</div>");
+				row.append("<div style='" + getKeyedStyleFromLink(link, "satisfaction", 0.6, 1) + "' class='cell' align='right'>" + Math.round(Math.min(link.satisfaction - 0.6, 0) * 250) + "%" + "</div>");
 				row.append(
 					"<div style='" +
 						getKeyedStyleFromLink(link, "revenue") +
