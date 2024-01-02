@@ -362,7 +362,7 @@
             <h5>Type (B/S/L):
             <div class="tooltip">
 <img src="/assets/images/icons/information.png">
-<span class="tooltiptext below" style="white-space: nowrap;">B: Budget pax (Cares about price)<br>S: Swift pax (Cares about frequency)<br>L: Compehensive + Brand Aware + Elite pax (Cares about quality & loyalty)<br>L pax are 3x better at generating loyalists compared to B and S pax<br>Check the survey button for more info on pax types
+<span class="tooltiptext below" style="white-space: nowrap;">B: Budget (and Simple) pax (Cares about price)<br>S: Swift pax (Cares about frequency)<br>L: Compehensive + Brand Aware + Elite pax (Cares about quality & loyalty)<br>L pax are 3x better at generating loyalists compared to B and S pax<br>Check the survey button for more info on pax types
 <br></span>
 </div>
             </h5>
@@ -370,17 +370,35 @@
             <div class="value" id="paxType"></div>
         </div>`);
 		};
+        if (!$("#newLoyalists").length) {
+			$("#paxType").parent().after(`<div class="table-row">
+            <div class="label">
+            <h5>New Loyalists (B/S/L):
+            </h5>
+            </div>
+            <div class="value" id="newLoyalists"></div>
+        </div>`);
+		};
         $("#paxOrigin").text(``);
         $("#paxType").text(``);
+        $("#newLoyalists").text(``);
         const survey = await _request(`airlines/${airlineId}/link-composition/${link.id}`);
         const passengerMap = await _request(`airlines/${airlineId}/related-link-consumption/${link.id}?cycleDelta=0&economy=true&business=true&first=true`);
         var homeAirportPax = 0;
         var destinationAirportPax = 0;
         var homeTransitPax = 0;
         var destinationTransitPax = 0;
-        var budgetPax = 0;
+        var cheapPax = 0;
         var swiftPax = 0;
         var loyalistPax = 0;
+        var comprehensivePax = 0;
+        var brandConsciousPax = 0;
+        var elitePax = 0;
+        var simplePax = 0;
+        var budgetPax = 0;
+        var cheapNewLoyalists = 0;
+        var swiftNewLoyalists = 0;
+        var loyalNewLoyalists = 0;
         for (var i = 0; i < survey.homeAirports.length; i++) {
             if (survey.homeAirports[i].airport === `${link.fromAirportCity}(${link.fromAirportCode})`) {
                 homeAirportPax = survey.homeAirports[i].passengerCount;
@@ -414,19 +432,44 @@
         }
         for (i = 0; i < survey.preferenceType.length; i++) {
             if (survey.preferenceType[i].title === "Budget") {
-                budgetPax += survey.preferenceType[i].passengerCount
+                budgetPax += survey.preferenceType[i].passengerCount;
+                cheapPax += survey.preferenceType[i].passengerCount;
+                cheapNewLoyalists += parseInt(survey.preferenceType[i].passengerCount * 0.3 * Math.max((survey.preferenceSatisfaction[i].satisfaction - 0.6) * 2.5, 0));
             } else {
                 if (survey.preferenceType[i].title === "Swift") {
-                    swiftPax += survey.preferenceType[i].passengerCount
+                    swiftPax += survey.preferenceType[i].passengerCount;
+                    swiftNewLoyalists += parseInt(survey.preferenceType[i].passengerCount * 0.3 * Math.max((survey.preferenceSatisfaction[i].satisfaction - 0.6) * 2.5, 0));
                 } else {
-                    if (["Comprehensive", "Brand Conscious", "Elite"].includes(survey.preferenceType[i].title)) {
-                        loyalistPax += survey.preferenceType[i].passengerCount
+                    if (survey.preferenceType[i].title === "Comprehensive") {
+                        comprehensivePax += survey.preferenceType[i].passengerCount;
+                        loyalistPax += survey.preferenceType[i].passengerCount;
+                        loyalNewLoyalists += parseInt(survey.preferenceType[i].passengerCount * Math.max((survey.preferenceSatisfaction[i].satisfaction - 0.6) * 2.5, 0));
+
+                    } else {
+                        if (survey.preferenceType[i].title === "Brand Conscious") {
+                            brandConsciousPax += survey.preferenceType[i].passengerCount;
+                            loyalistPax += survey.preferenceType[i].passengerCount;
+                            loyalNewLoyalists += parseInt(survey.preferenceType[i].passengerCount * Math.max((survey.preferenceSatisfaction[i].satisfaction - 0.6) * 2.5, 0));
+                        } else {
+                            if (survey.preferenceType[i].title === "Elite") {
+                                elitePax += survey.preferenceType[i].passengerCount;
+                                loyalistPax += survey.preferenceType[i].passengerCount;
+                                loyalNewLoyalists += parseInt(survey.preferenceType[i].passengerCount * Math.max((survey.preferenceSatisfaction[i].satisfaction - 0.6) * 2.5, 0));
+                            } else {
+                                if (survey.preferenceType[i].title === "Simple") {
+                                    simplePax += survey.preferenceType[i].passengerCount;
+                                    cheapPax += survey.preferenceType[i].passengerCount;
+                                    cheapNewLoyalists += parseInt(survey.preferenceType[i].passengerCount * 0.3 * Math.max((survey.preferenceSatisfaction[i].satisfaction - 0.6) * 2.5, 0));
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
         $("#paxOrigin").text(`${homeAirportPax}/${homeTransitPax}/${destinationAirportPax}/${destinationTransitPax}`);
-        $("#paxType").text(`${budgetPax}/${swiftPax}/${loyalistPax}`);
+        $("#paxType").text(`${cheapPax}/${swiftPax}/${loyalistPax}`);
+        $("#newLoyalists").text(`${cheapNewLoyalists}/${swiftNewLoyalists}/${loyalNewLoyalists}`);
     }
 
 	async function loadLink(airlineId, linkId) {
