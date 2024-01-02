@@ -375,6 +375,11 @@
             <div class="label">
             <h5>New Loyalists (B/S/L):
             </h5>
+            <div class="tooltip">
+<img src="/assets/images/icons/information.png">
+<span class="tooltiptext below" style="white-space: nowrap;">The approximate amount of new loyalists your airline gains from this route<br>Assumes all pax on your route don't take transits, conversion rate is reduced for transit pax<br>Budget and Swift pax can only convert loyalists at 30% of regular rate
+<br></span>
+</div>
             </div>
             <div class="value" id="newLoyalists"></div>
         </div>`);
