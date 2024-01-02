@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BAC UP (with H/T/D/T)
 // @namespace    http://tampermonkey.net/
-// @version      1.0.1
+// @version      1.0.2
 // @description  try to take over the world!
 // @author       Aphix/Torus (original cost per PAX by Alrianne), mdons, bohaska (Fly or die)
 // @match        https://*.airline-club.com/
