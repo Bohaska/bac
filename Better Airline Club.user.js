@@ -1085,13 +1085,13 @@
 	}
 
 	$("#airplaneModelSortHeader").append(
-		'<div class="cell clickable" data-sort-property="max_rotation" data-sort-order="ascending" onclick="toggleAirplaneModelTableSortOrder($(this))" align="right">⏲</div>'
+		'<div class="cell clickable" data-sort-property="max_rotation" data-sort-order="ascending" onclick="toggleAirplaneModelTableSortOrder($(this))" align="right" title="Maximum amount of flights it can fly per week">⏲</div>'
 	);
 	$("#airplaneModelSortHeader").append(
-		'<div class="cell clickable" data-sort-property="cpp" data-sort-order="ascending" onclick="toggleAirplaneModelTableSortOrder($(this))" align="right">$/🧍</div>'
+		'<div class="cell clickable" data-sort-property="cpp" data-sort-order="ascending" onclick="toggleAirplaneModelTableSortOrder($(this))" align="right" title="Cost of flying this plane, per pax, assuming 100% LF and all-economy setup">$/🧍</div>'
 	);
 	$("#airplaneModelSortHeader").append(
-		'<div class="cell clickable" data-sort-property="in_use" data-sort-order="ascending" onclick="toggleAirplaneModelTableSortOrder($(this))" align="right">#✈</div>'
+		'<div class="cell clickable" data-sort-property="in_use" data-sort-order="ascending" onclick="toggleAirplaneModelTableSortOrder($(this))" align="right" title="Amount of planes owned by airlines">#✈</div>'
 	);
 
 	const headerCells = document.querySelectorAll("#airplaneModelSortHeader .cell");
@@ -1116,10 +1116,10 @@
 `);
 
 	$("#airplaneCanvas .mainPanel .section .table .table-header:first").append(`
-    <div class="cell detailsSelection">Distance: <input type="text" id="fightRange" value="1000" /></div>
-    <div class="cell detailsSelection">Runway length: <input type="text" id="runway" value="3000" /></div>
+    <div class="cell detailsSelection">Distance: <input type="text" id="fightRange" value="0" /></div>
+    <div class="cell detailsSelection">Runway length: <input type="text" id="runway" value="3600" /></div>
     <div class="cell detailsSelection">Min. Capacity: <input type="text" id="min_capacity" value="0" /></div>
-    <div class="cell detailsSelection">Min. Circulation: <input type="text" id="min_circulation" value="500" /></div>
+    <div class="cell detailsSelection">Min. Circulation: <input type="text" id="min_circulation" value="0" /></div>
     <div class="cell detailsSelection" style="min-width: 160px; text-align:right">
         <label for="owned_only">Owned Only <input type="checkbox" id="owned_only" /></label>
         <label for="use_flight_total">Flight Fuel Total <input type="checkbox" id="use_flight_total" /></label>
