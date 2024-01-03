@@ -237,6 +237,11 @@
 			$("#linkOtherCosts").text("-");
 			$("#linkDelays").text("-");
 			$("#linkCancellations").text("-");
+            $("#linkAverageLoadFactor").text("-");
+            $("#linkAverageProfit").text("-");
+            $("#paxOrigin").text("-");
+            $("#paxType").text("-");
+            $("#newLoyalists").text("-");
 
 			disableButton($("#linkDetails .button.viewLinkHistory"), "Passenger Map is not yet available for this route - please wait for the simulation (time estimation on top left of the screen).");
 			disableButton(
