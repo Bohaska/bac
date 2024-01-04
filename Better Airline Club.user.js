@@ -909,6 +909,190 @@
 		_updateLatestOilPriceInHeader();
 	}
 
+    window.searchRoute = function(fromAirportId, toAirportId) {
+        if (fromAirportId && toAirportId) {
+            var url = "search-route/" + fromAirportId + "/" + toAirportId
+
+            $.ajax({
+                type: 'GET',
+                url: url,
+                contentType: 'application/json; charset=utf-8',
+                dataType: 'json',
+                success: function(searchResult) {
+                    $("#routeSearchResult").empty()
+                    $("#searchCanvas .banner").hide()
+
+                    $.each(searchResult, function(index, entry) {
+                        var itineraryDiv = $("<div class='section itinerary' onclick='toggleSearchLinkDetails($(this))'></div>")
+                        var total = 0
+                        var passengers = entry.passenger
+
+                        var routeDiv = $("<div style='float:left; width : 85%'></div>")
+                        itineraryDiv.append(routeDiv)
+
+                        //Generate Summary
+                        var startLink
+                        for (i = 0 ; i < entry.route.length; i ++) {
+                            if (entry.route[i].transportType == 'FLIGHT') {
+                                startLink = entry.route[i]
+                                break;
+                            }
+                        }
+
+                        var endLink
+                        for (i = entry.route.length - 1 ; i >= 0 ; i --) {
+                            if (entry.route[i].transportType == 'FLIGHT') {
+                                endLink = entry.route[i]
+                                break;
+                            }
+                        }
+
+                        var startDay = Math.floor(startLink.departure / (24 * 60))
+                        var summaryDiv = $("<div class='summary'  style='display: flex; align-items: center;'></div>")
+                        summaryDiv.append("<div style='width: 50%; float:left;'> " + getAirlineTimeSlotText(startLink.departure, startDay) + " - " + getAirlineTimeSlotText(endLink.arrival, startDay) + "</div>")
+                        summaryDiv.append("<div style='width: 50%; float:left;'> " + getDurationText(endLink.arrival - startLink.departure) +  "</div>")
+                        summaryDiv.append("<div style='clear:both; '></div>")
+
+                        routeDiv.append(summaryDiv)
+
+                        var previousLink
+                        var flightCount = 0
+                        $.each(entry.route, function(index, link) {
+                            if (link.transportType == 'FLIGHT') {
+                                flightCount ++
+                                //check generic transit
+                                var preGenericTransit
+                                var postGenericTransit
+                                if (index > 0) {
+                                    if (entry.route[index - 1].transportType == 'GENERIC_TRANSIT') {
+                                        preGenericTransit = entry.route[index - 1]
+                                    }
+                                }
+                                if (index < entry.route.length - 1) {
+                                    if (entry.route[index + 1].transportType == 'GENERIC_TRANSIT') {
+                                        postGenericTransit = entry.route[index + 1]
+                                    }
+                                }
+
+                                var linkDiv = $("<div style='margin-bottom: 10px;'></div>")
+                                var linkSummaryDiv = $("<div style='margin : 10px 0;'></div>")
+                                linkSummaryDiv.append("<div style='width: 50%; float:left; display: flex; align-items: center;'> " + getAirlineLogoImg(link.airlineId) + "<span class='summary'>" + link.airlineName + "</span></div>")
+                                var linkDurationText = getDurationText(link.arrival - link.departure)
+                                var remarks = []
+                                if (preGenericTransit) {
+                                    remarks.push("Depart from " + link.fromAirportIata)
+                                }
+                                if (postGenericTransit) {
+                                    remarks.push("Arrive at " + link.toAirportIata)
+                                }
+                                if (previousLink) {
+                                    remarks.push("+" + getDurationText(link.departure - previousLink.arrival) + " layover at " + link.fromAirportIata)
+                                }
+
+                                if (remarks.length > 0) {
+                                    var remarksText = ""
+                                    for (i = 0 ; i < remarks.length; i++) {
+                                        if (i > 0) {
+                                            linkDurationText += ", "
+                                        }
+                                        remarksText += remarks[i]
+                                    }
+                                    linkDurationText += "(" + remarksText + ")"
+                                }
+
+                                linkSummaryDiv.append("<div style='width: 50%; float:left;'> " + linkDurationText + "</div>")
+                                //                        airlineSpan.append("<div style='width: 50%; float:left;'> " + link.flightCode + "&nbsp;" + getAirlineTimeSlotText(link.departure, startDay) + " - " + getAirlineTimeSlotText(link.arrival, startDay) + "</div>")
+                                linkSummaryDiv.append("<div style='clear:both; '></div>")
+                                linkDiv.append(linkSummaryDiv)
+
+                                var linkDetailDiv = $("<div style='display: flex; align-items: center; margin: 0 10px;' class='linkDetails'></div>")
+                                var linkDetailLeftDiv = $("<div style='width: 50%;'></div>").appendTo(linkDetailDiv)
+                                linkDetailLeftDiv.append("<div style='display: inline-block; width: 75px;' class='summary'> " + link.flightCode + "</div>")
+                                linkDetailLeftDiv.append("<span>" + getAirlineTimeSlotText(link.departure, startDay) + " - " + getAirlineTimeSlotText(link.arrival, startDay) + "</span>")
+                                linkDetailLeftDiv.append("<div>$" + link.price + " (" +  link.linkClass + ")</div>")
+                                var featureIconsDiv = window.getLinkFeatureIconsDiv(link.features)
+                                linkDetailLeftDiv.append(featureIconsDiv)
+                                linkDetailLeftDiv.append(getLinkReviewDiv(link.computedQuality))
+
+
+                                var linkDetailRightDiv = $("<div style='width: 50%;'></div>").appendTo(linkDetailDiv)
+                                linkDetailRightDiv.append("<div style='display: flex; align-items: center;'>" + getAirportText(link.fromAirportCity, link.fromAirportIata) + "<img src='assets/images/icons/arrow.png' style='margin: 0 5px;'>" + getAirportText(link.toAirportCity, link.toAirportIata) + "</div>")
+                                linkDetailRightDiv.append("<div>Aircraft : " + (link.airplaneModelName ? link.airplaneModelName : "-") + "</div>")
+                                if (link.operatorAirlineId) { //code share
+                                    linkDetailRightDiv.append("<div>Operated by " + getAirlineLogoImg(link.operatorAirlineId) + link.operatorAirlineName + "</div>")
+                                }
+                                if (preGenericTransit) {
+                                    linkDetailRightDiv.append("<div>Depart from " + preGenericTransit.toAirportText + "</div>")
+                                }
+                                if (postGenericTransit) {
+                                    linkDetailRightDiv.append("<div>Arrive at " + postGenericTransit.fromAirportText + "</div>")
+                                }
+
+
+                                linkDetailDiv.append("<div style='clear:both; '></div>")
+
+                                linkDetailDiv.hide()
+                                linkDiv.append(linkDetailDiv)
+
+                                //                        var directionDiv = $("<div style='display: flex; align-items: center;' >" + link.flightCode + "&nbsp;" + getAirportText(link.fromAirportCity, link.fromAirportIata) + "<img src='assets/images/icons/arrow.png' style='margin: 0 5px;'>" + getDurationText(link.duration) + " " + link.linkClass + "</div>")
+                                //                        linkDiv.append(directionDiv)
+
+                                routeDiv.append(linkDiv)
+                                total += link.price
+                                previousLink = link
+                            }
+                        })
+                        var stopDescription
+                        if (flightCount == 1) {
+                            stopDescription = "Direct Flight"
+                        } else if (flightCount == 2) {
+                            stopDescription = "1 Stop"
+                        } else {
+                            stopDescription = (flightCount - 1) + " Stops"
+                        }
+                        var priceDiv = $("<div style='float: right; width: 15%;'><div class='price'>$ " + total + "</div></div>")
+                        var priceTextDiv = priceDiv.find('div.price')
+
+                        $.each(entry.remarks, function(index, remark) {
+                            if (remark == 'BEST_SELLER') {
+                                priceTextDiv.css("color", "darkgreen")
+                                priceTextDiv.after("<div style='display:inline-block;' class='remark'>BEST SELLER</div>")
+                            } else if (remark == 'BEST_DEAL') {
+                                priceTextDiv.css("color", "darkgreen")
+                                priceTextDiv.after("<div style='display:inline-block;' class='remark'>BEST DEAL</div>")
+                            }
+                        })
+
+
+                        priceDiv.append($("<div style='margin-top: 5px;'>" + stopDescription + "</div>"))
+                        priceDiv.append($("<div style='margin-top: 5px;'>" + passengers + " passengers</div>"))
+
+
+                        itineraryDiv.append(priceDiv)
+                        itineraryDiv.append("<div style='clear:both;'></div>")
+                        $("#routeSearchResult").append(itineraryDiv)
+                    })
+
+
+
+                    if (searchResult.length == 0) {
+                        $("#routeSearchResult").append("<div class='ticketTitle'>Sorry, no flights available.</div>")
+                    }
+                },
+                error: function(jqXHR, textStatus, errorThrown) {
+                    console.log(JSON.stringify(jqXHR));
+                    console.log("AJAX error: " + textStatus + ' : ' + errorThrown);
+                },
+                beforeSend: function() {
+                    $('body .loadingSpinner').show()
+                },
+                complete: function(){
+                    $('body .loadingSpinner').hide()
+                }
+            });
+        }
+    }
+
 	$(document).ready(() => setTimeout(() => launch(), 1000));
 
 	// Begin Cost per PAX
