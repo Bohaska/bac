@@ -1065,7 +1065,7 @@
 
 
                         priceDiv.append($("<div style='margin-top: 5px;'>" + stopDescription + "</div>"))
-                        priceDiv.append($("<div style='margin-top: 5px;'>" + passengers + " passengers</div>"))
+                        priceDiv.append($("<div style='margin-top: 5px;'>" + passengers + " pax</div>"))
 
 
                         itineraryDiv.append(priceDiv)
