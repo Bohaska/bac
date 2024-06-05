@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BAC UP (with H/T/D/T)
 // @namespace    http://tampermonkey.net/
-// @version      1.0.4
+// @version      1.0.5
 // @description  try to take over the world!
 // @author       Aphix/Torus (original cost per PAX by Alrianne), mdons, bohaska (Fly or die)
 // @match        https://*.airline-club.com/
@@ -551,7 +551,11 @@
 		$(".topBarDetails .latest-price")
 			.text("$" + commaSeparateNumber(latestPrice))
 			.attr({ style: getStyleFromTier(tierForPrice) });
-
+        
+        if (durationTillNextTick === undefined) {
+          durationTillNextTick = 30000
+        }
+        
 		setTimeout(() => {
 			_updateLatestOilPriceInHeader();
 		}, Math.round(Math.max(durationTillNextTick / 2, 30000)));
@@ -1065,8 +1069,9 @@
 
 
                         priceDiv.append($("<div style='margin-top: 5px;'>" + stopDescription + "</div>"))
-                        priceDiv.append($("<div style='margin-top: 5px;'>" + passengers + " pax</div>"))
-
+                        if (passengers !== undefined) {
+                          priceDiv.append($("<div style='margin-top: 5px;'>" + passengers + " pax</div>"))
+                        }
 
                         itineraryDiv.append(priceDiv)
                         itineraryDiv.append("<div style='clear:both;'></div>")
