@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         [BETA] BAC with H/T/D/T
 // @namespace    http://tampermonkey.net/
-// @version      1.1.0
+// @version      2.0.1
 // @description  Enhances airline-club.com and v2.airline-club.com airline management game (protip: Sign into your 2 accounts with one on each domain to avoid extra logout/login). Install this script with automatic updates by first installing TamperMonkey/ViolentMonkey/GreaseMonkey and installing it as a userscript.
-// @author       Aphix/Torus (original "Cost Per PAX" portion by Alrianne @ https://github.com/wolfnether/Airline_Club_Mod/), with additions by bohaska (Fly or die)
+// @author       Aphix/Torus (original "Cost Per PAX" portion by Alrianne @ https://github.com/wolfnether/Airline_Club_Mod/)
 // @match        https://*.airline-club.com/
 // @icon         https://www.google.com/s2/favicons?domain=airline-club.com
 // @downloadURL  https://github.com/Bohaska/bac/raw/main/Better%20Airline%20Club.user.js
@@ -29,6 +29,7 @@ var DEFAULT_MIN_CAPACITY_FILTER = 0;
 // Plugin code starts here and goes to the end...
 // Feel free to leave a comment on the gist if you have any questions or requests: https://gist.github.com/aphix/fdeeefbc4bef1ec580d72639bbc05f2d
 // Want to donate? Don't. Buy yourself some ETH. If that works out nice and you want to pay it back later then find me on github.
+// Note: Thanks continentalysky for the commission!
 
 function reportAjaxError(jqXHR, textStatus, errorThrown) {
     console.error(JSON.stringify(jqXHR));
@@ -572,12 +573,571 @@ window.loadLink = async function loadLink(airlineId, linkId) {
         loadLinkSurvey(airlineId, link),
     ])
 
+    //populate airplane model drop down
+	var explicitlySelectedModelId = $("#planLinkModelSelect").data('explicitId')
+
+	$("#viewLinkModelSelect").children('option').remove()
+
+	//find which model is assigned to the existing link (if exist)
+	const assignedModelId = link.modelId
+	var selectedModelId
+
+	if (explicitlySelectedModelId) { //if there was a explicitly selected model, for example from buying a new plane
+		selectedModelId = explicitlySelectedModelId;
+	} else {
+        selectedModelId = assignedModelId
+    }
+
+    loadAirplaneModels();
+    const fromAirport = airports.find(airport => airport.id === link.fromAirportId)
+    const toAirport = airports.find(airport => airport.id === link.toAirportId)
+    const minRunway = Math.min(fromAirport.runwayLength, toAirport.runwayLength)
+
+    link.fromAirport = fromAirport
+    link.toAirport = toAirport
+
+    $("#detailsPanel").data(link)
+
+    var arrayModels = Object.values(loadedModelsById)
+
+    $.each(arrayModels, function(key, modelPlanLinkInfo) {
+		if (modelPlanLinkInfo.id == selectedModelId) {
+			modelPlanLinkInfo.owned = true
+		} else {
+			modelPlanLinkInfo.owned = false
+		}
+	})
+
+    arrayModels = sortPreserveOrder(arrayModels, "owned", false)
+
+    $("#viewLinkModelSelect").children('option').remove()
+
+    $.each(arrayModels, function(id, model) {
+        var modelId = model.id
+        var modelname = model.name
+        if (model.range >= link.distance && model.runwayRequirement <= minRunway) {
+            let flightDuration = calcFlightTime(model, link.distance) ;
+
+            let maxFlightMinutes = 4 * 24 * 60;
+            let frequency = Math.floor(maxFlightMinutes / ((flightDuration + model.turnaroundTime) * 2));
+            var option = $("<option></option>").attr("value", modelId).text(modelname + " (" + frequency + ")")
+
+            option.appendTo($("#viewLinkModelSelect"))
+
+            if (selectedModelId == modelId) {
+                option.prop("selected", true)
+                option.addClass("highlight-text")
+                linkUpdateModelInfo(modelId)
+            }
+        }
+    });
+
+	$("#viewLinkModelSelect").show()
+
+	setActiveDiv($("#extendedPanel #airplaneModelDetails"))
+
     return {
         link,
         linkCompetition,
         linkHistory,
         linkSurvey,
     };
+}
+
+const _editLink = window.editLink
+
+window.editLink = function editLink(linkId) {
+    $("#viewLinkModelSelect").hide()
+    _editLink(linkId)
+}
+
+let originalShowSearchCanvas = window.showSearchCanvas
+window.showSearchCanvas = function showSearchCanvas(historyAirline) {
+    return originalShowSearchCanvas(historyAirline)
+}
+
+window.researchFlight = function researchFlight(fromAirportId, toAirportId) {
+    if (fromAirportId && toAirportId) {
+        var url = "research-link/" + fromAirportId + "/" + toAirportId
+
+        $.ajax({
+            type: 'GET',
+            url: url,
+            contentType: 'application/json; charset=utf-8',
+            dataType: 'json',
+            success: function(result) {
+                $("#searchCanvas").data(result);
+                var fromAirport = result.fromAirport
+                var toAirport = result.toAirport
+                var fromAirportId = fromAirport.id
+                var toAirportId = toAirport.id
+                loadAirportImage(fromAirportId, $('#researchSearchResult img.fromAirport') )
+                loadAirportImage(toAirportId, $('#researchSearchResult img.toAirport'))
+                $("#researchSearchResult .fromAirportText").text(result.fromAirportText)
+		        $("#researchSearchResult .fromAirportText")[0].setAttribute("onclick", `showAirportDetails(${fromAirportId})`)
+                $("#researchSearchResult .fromAirport .population").text(commaSeparateNumber(result.fromAirport.population))
+                $("#researchSearchResult .fromAirport .incomeLevel").text(result.fromAirport.incomeLevel)
+                $("#researchSearchResult .toAirportText").text(result.toAirportText)
+		        $("#researchSearchResult .toAirportText")[0].setAttribute("onclick", `showAirportDetails(${toAirportId})`)
+		        populateNavigation($("#researchSearchResult"))
+                $("#researchSearchResult .toAirport .population").text(commaSeparateNumber(result.toAirport.population))
+                $("#researchSearchResult .toAirport .incomeLevel").text(result.toAirport.incomeLevel)
+
+                $("#researchSearchResult .relationship").html(getCountryFlagImg(result.fromAirport.countryCode) + "&nbsp;vs&nbsp;" + getCountryFlagImg(result.toAirport.countryCode) + getCountryRelationshipDescription(result.mutualRelationship))
+                $("#researchSearchResult .distance").text(result.distance)
+                $("#researchSearchResult .flightType").text(result.flightType)
+                $("#researchSearchResult .demand").text(toLinkClassValueString(result.directDemand))
+
+                var $breakdown = $("#researchSearchResult .directDemandBreakdown")
+                $breakdown.find(".fromAirport .airportLabel").empty()
+                $breakdown.find(".fromAirport .airportLabel").append(getAirportSpan(fromAirport))
+                $breakdown.find(".fromAirport .businessDemand").text(toLinkClassValueString(result.fromAirportBusinessDemand))
+                $breakdown.find(".fromAirport .touristDemand").text(toLinkClassValueString(result.fromAirportTouristDemand))
+
+                $breakdown.find(".toAirport .airportLabel").empty()
+                $breakdown.find(".toAirport .airportLabel").append(getAirportSpan(toAirport))
+                $breakdown.find(".toAirport .businessDemand").text(toLinkClassValueString(result.toAirportBusinessDemand))
+                $breakdown.find(".toAirport .touristDemand").text(toLinkClassValueString(result.toAirportTouristDemand))
+
+
+                $("#researchSearchResult .table.links .table-row").remove()
+
+                const usedModels = []
+
+                $.each(result.links, function(index, link) {
+                    var $row = $("<div class='table-row'><div class='cell'>" + link.airlineName
+                        + "</div><div class='cell'>" + link.modelName
+                        + "</div><div class='cell'>" + toLinkClassValueString(link.price, "$")
+                        + "</div><div class='cell'>" + toLinkClassValueString(link.capacity)
+                        + "</div><div class='cell'>" + link.computedQuality
+                        + "</div><div class='cell'>" + link.frequency + "</div></div>")
+                    $('#researchSearchResult .table.links').append($row)
+                    usedModels.push(link.modelId)
+                })
+                var selectedModel = null
+                if (result.links.length == 0) {
+                    var $row = $("<div class='table-row'><div class='cell'>-"
+                                            + "</div><div class='cell'>-"
+                                            + "</div><div class='cell'>-"
+                                            + "</div><div class='cell'>-"
+                                            + "</div><div class='cell'>-</div></div>")
+                    $('#researchSearchResult .table.links').append($row)
+                } else {
+                    selectedModel = result.links[0].modelId
+                }
+
+                assignAirlineColors(result.consumptions, "airlineId")
+                plotPie(result.consumptions, null, $("#researchSearchResult .linksPie"), "airlineName", "soldSeats")
+
+                $('#researchSearchResult').show()
+
+                const minRunway = Math.min(fromAirport.runwayLength, toAirport.runwayLength)
+                const distance = result.distance
+                loadAirplaneModels();
+
+                var arrayModels = Object.values(loadedModelsById)
+
+                $.each(arrayModels, function(key, modelPlanLinkInfo) {
+                    if (usedModels.includes(modelPlanLinkInfo.id)) {
+                        modelPlanLinkInfo.used = true
+                    } else {
+                        modelPlanLinkInfo.used = false
+                    }
+                })
+
+                arrayModels = sortPreserveOrder(arrayModels, "used", false)
+
+                $("#researchFlightModelSelect").children('option').remove()
+
+                $.each(arrayModels, function(id, model) {
+                    var modelId = model.id
+                    var modelname = model.name
+                    if (model.range >= distance && model.runwayRequirement <= minRunway) {
+                        if (selectedModel === null) {
+                            selectedModel = modelId
+                        }
+                        let flightDuration = calcFlightTime(model, distance) ;
+
+                        let maxFlightMinutes = 4 * 24 * 60;
+                        let frequency = Math.floor(maxFlightMinutes / ((flightDuration + model.turnaroundTime) * 2));
+                        var option = $("<option></option>").attr("value", modelId).text(modelname + " (" + frequency + ")")
+
+                        option.appendTo($("#researchFlightModelSelect"))
+
+                        if (selectedModel == modelId) {
+                            option.prop("selected", true)
+                            researchUpdateModelInfo(modelId)
+                        }
+
+                        if (usedModels.includes(modelId)) {
+                            option.addClass("highlight-text")
+                        }
+                    }
+                });
+
+                //plot consumptions
+             },
+             error: function(jqXHR, textStatus, errorThrown) {
+                            console.log(JSON.stringify(jqXHR));
+                            console.log("AJAX error: " + textStatus + ' : ' + errorThrown);
+             },
+             complete:function() {
+                          //Hide the loader over here
+                          input.parent().find(".spinner").hide()
+                          currentSearchAjax = undefined
+             },
+             beforeSend: function() {
+                 $('body .loadingSpinner').show()
+             },
+             complete: function(){
+                 $('body .loadingSpinner').hide()
+             }
+        });
+    }
+}
+
+window.researchUpdateModelInfo = function researchUpdateModelInfo(modelId) {
+    let routeInfo = $("#searchCanvas").data()
+	let model = loadedModelsById[modelId]
+	$('#researchAirplaneModelDetails .selectedModel').val(modelId)
+	$('#researchAirplaneModelDetails #modelName').text(model.name)
+	$('#researchAirplaneModelDetails .modelFamily').text(model.family)
+	$('#researchAirplaneModelDetails #capacity').text(model.capacity)
+	$('#researchAirplaneModelDetails #airplaneType').text(model.airplaneType)
+	$('#researchAirplaneModelDetails .turnaroundTime').text(model.turnaroundTime)
+	$('#researchAirplaneModelDetails .runwayRequirement').text(model.runwayRequirement)
+	$('#researchAirplaneModelDetails #fuelBurn').text(model.fuelBurn)
+	$('#researchAirplaneModelDetails #range').text(model.range + "km")
+	$('#researchAirplaneModelDetails #speed').text(model.speed + "km/h")
+	$('#researchAirplaneModelDetails #lifespan').text(model.lifespan / 52 + " years")
+
+	var $manufacturerSpan = $('<span>' + model.manufacturer + '&nbsp;</span>')
+	$manufacturerSpan.append(getCountryFlagImg(model.countryCode))
+	$('#researchAirplaneModelDetails .manufacturer').empty()
+	$('#researchAirplaneModelDetails .manufacturer').append($manufacturerSpan)
+	$('#researchAirplaneModelDetails .price').text("$" + commaSeparateNumber(model.price))
+
+	if (model.constructionTime == 0) {
+		$('#researchAirplaneModelDetails .delivery').text("immediate")
+		$('#researchAirplaneModelDetails .delivery').removeClass('warning')
+		$('#researchAirplaneModelDetails .add').text('Purchase')
+	} else {
+		$('#researchAirplaneModelDetails .delivery').text(model.constructionTime + " weeks")
+		$('#researchAirplaneModelDetails .delivery').addClass('warning')
+		$('#researchAirplaneModelDetails .add').text('Place Order')
+	}
+
+	if (model.rejection) {
+		disableButton($('#researchAirplaneModelDetails .add'), model.rejection)
+	} else {
+		enableButton($('#researchAirplaneModelDetails .add'))
+	}
+
+    let serviceLevel = 40;
+    let frequency = 0;
+
+    let plane_category = _getPlaneCategoryFor(model);
+
+    let baseSlotFee = 0;
+
+    let distance = routeInfo.distance
+
+    let airportFrom = routeInfo.fromAirport
+    let airportTo = routeInfo.toAirport
+
+    switch (airportFrom.size){
+        case 1 :
+        case 2 : baseSlotFee=50;break;
+        case 3 : baseSlotFee=80;break;
+        case 4 : baseSlotFee=150;break;
+        case 5 : baseSlotFee=250;break;
+        case 6 : baseSlotFee=350;break;
+        default: baseSlotFee=500;break;
+    }
+
+    switch (airportTo.size){
+        case 1 :
+        case 2 : baseSlotFee+=50;break;
+        case 3 : baseSlotFee+=80;break;
+        case 4 : baseSlotFee+=150;break;
+        case 5 : baseSlotFee+=250;break;
+        case 6 : baseSlotFee+=350;break;
+        default: baseSlotFee+=500;break;
+    }
+
+    let serviceLevelCost = 1;
+
+    switch (serviceLevel) {
+        case 2:serviceLevelCost=4;break;
+        case 3:serviceLevelCost=8;break;
+        case 4:serviceLevelCost=13;break;
+        case 5:serviceLevelCost=20;break;
+    }
+
+    let basic = 0;
+    let multiplyFactor = 2;
+    if (airportFrom.countryCode == airportTo.countryCode) {
+        if (distance <= 1000) {
+            basic = 8;
+        } else if (distance <= 3000) {
+            basic = 10;
+        } else {
+            basic = 12;
+        }
+    } else if (airportFrom.zone == airportTo.zone){
+        if (distance <= 2000) {
+            basic = 10;
+        } else if (distance <= 4000) {
+            basic = 15;
+        } else {
+            basic = 20;
+        }
+    } else {
+        if (distance <= 2000) {
+            basic = 15;
+            multiplyFactor = 3;
+        } else if (distance <= 5000) {
+            basic = 25;
+            multiplyFactor = 3;
+        } else if (distance <= 12000) {
+            basic = 30;
+            multiplyFactor = 4;
+        } else {
+            basic = 30;
+            multiplyFactor = 4;
+        }
+    }
+
+    let staffPerFrequency = multiplyFactor * 0.4;
+    let staffPer1000Pax = multiplyFactor;
+
+    let duration = calcFlightTime(model, distance)
+    let durationInHour = duration / 60;
+
+    let price = model.price;
+    if( model.originalPrice){
+        price = model.originalPrice;
+    }
+    let baseDecayRate = 100 / model.lifespan;
+
+    let maintenance = 0;
+    let depreciationRate = 0;
+
+    let maxFlightMinutes = 4 * 24 * 60;
+    frequency = Math.floor(maxFlightMinutes / ((duration + model.turnaroundTime)*2));
+
+    let flightTime = frequency * 2 * (duration + model.turnaroundTime);
+    let availableFlightMinutes = maxFlightMinutes - flightTime;
+    let utilisation = flightTime / (maxFlightMinutes - availableFlightMinutes);
+    let planeUtilisation = (maxFlightMinutes - availableFlightMinutes) / maxFlightMinutes;
+
+    let decayRate = 100 / (model.lifespan * 3) * (1 + 2 * planeUtilisation);
+    depreciationRate += Math.floor(price * (decayRate / 100) * utilisation);
+    maintenance += model.capacity * 100 * utilisation;
+
+    let fuelCost = frequency;
+
+    if (duration <= 90){
+        fuelCost *= model.fuelBurn * duration * 5.5 * 0.08;
+    }else{
+        fuelCost *= model.fuelBurn * (duration + 495) * 0.08;
+    }
+
+    let crewCost = model.capacity * durationInHour * 12 * frequency;
+    let airportFees = (baseSlotFee * plane_category + (Math.min(3, airportTo.size) + Math.min(3, airportFrom.size)) * model.capacity) * frequency;
+    let servicesCost = (20 + serviceLevelCost * durationInHour) * model.capacity * 2 * frequency;
+    let cost = fuelCost + crewCost + airportFees + depreciationRate + servicesCost + maintenance;
+
+    let staffTotal = Math.floor(basic + staffPerFrequency * frequency + staffPer1000Pax * model.capacity * frequency / 1000);
+
+    $('#researchAirplaneModelDetails #FCPF').text("$" + commaSeparateNumber(Math.floor(fuelCost)));
+    $('#researchAirplaneModelDetails #CCPF').text("$" + commaSeparateNumber(Math.floor(crewCost)));
+    $('#researchAirplaneModelDetails #AFPF').text("$" + commaSeparateNumber(airportFees));
+    $('#researchAirplaneModelDetails #depreciation').text("$" + commaSeparateNumber(Math.floor(depreciationRate)));
+    $('#researchAirplaneModelDetails #SSPF').text("$" + commaSeparateNumber(Math.floor(servicesCost)));
+    $('#researchAirplaneModelDetails #maintenance').text("$" + commaSeparateNumber(Math.floor(maintenance)));
+    $('#researchAirplaneModelDetails #cpp').text("$" + commaSeparateNumber(Math.floor(cost / (model.capacity * frequency))) + " * " + (model.capacity * frequency));
+    $('#researchAirplaneModelDetails #cps').text("$" + commaSeparateNumber(Math.floor(cost / staffTotal)) + " * " + staffTotal);
+}
+
+window.linkUpdateModelInfo = function linkUpdateModelInfo(modelId) {
+    let routeInfo = $("#detailsPanel").data()
+	let model = loadedModelsById[modelId]
+	$('#airplaneModelDetails .selectedModel').val(modelId)
+	$('#airplaneModelDetails #modelName').text(model.name)
+	$('#airplaneModelDetails .modelFamily').text(model.family)
+	$('#airplaneModelDetails #capacity').text(model.capacity)
+	$('#airplaneModelDetails #airplaneType').text(model.airplaneType)
+	$('#airplaneModelDetails .turnaroundTime').text(model.turnaroundTime)
+	$('#airplaneModelDetails .runwayRequirement').text(model.runwayRequirement)
+	$('#airplaneModelDetails #fuelBurn').text(model.fuelBurn)
+	$('#airplaneModelDetails #range').text(model.range + "km")
+	$('#airplaneModelDetails #speed').text(model.speed + "km/h")
+	$('#airplaneModelDetails #lifespan').text(model.lifespan / 52 + " years")
+
+	var $manufacturerSpan = $('<span>' + model.manufacturer + '&nbsp;</span>')
+	$manufacturerSpan.append(getCountryFlagImg(model.countryCode))
+	$('#airplaneModelDetails .manufacturer').empty()
+	$('#airplaneModelDetails .manufacturer').append($manufacturerSpan)
+	$('#airplaneModelDetails .price').text("$" + commaSeparateNumber(model.price))
+
+	if (model.constructionTime == 0) {
+		$('#airplaneModelDetails .delivery').text("immediate")
+		$('#airplaneModelDetails .delivery').removeClass('warning')
+		$('#airplaneModelDetails .add').text('Purchase')
+	} else {
+		$('#airplaneModelDetails .delivery').text(model.constructionTime + " weeks")
+		$('#airplaneModelDetails .delivery').addClass('warning')
+		$('#airplaneModelDetails .add').text('Place Order')
+	}
+
+	if (model.rejection) {
+		disableButton($('#airplaneModelDetails .add'), model.rejection)
+	} else {
+		enableButton($('#airplaneModelDetails .add'))
+	}
+
+    let serviceLevel = 40;
+    let frequency = 0;
+
+    let plane_category = _getPlaneCategoryFor(model);
+
+    let baseSlotFee = 0;
+
+    let distance = routeInfo.distance
+
+    let airportFrom = routeInfo.fromAirport
+    let airportTo = routeInfo.toAirport
+
+    switch (airportFrom.size){
+        case 1 :
+        case 2 : baseSlotFee=50;break;
+        case 3 : baseSlotFee=80;break;
+        case 4 : baseSlotFee=150;break;
+        case 5 : baseSlotFee=250;break;
+        case 6 : baseSlotFee=350;break;
+        default: baseSlotFee=500;break;
+    }
+
+    switch (airportTo.size){
+        case 1 :
+        case 2 : baseSlotFee+=50;break;
+        case 3 : baseSlotFee+=80;break;
+        case 4 : baseSlotFee+=150;break;
+        case 5 : baseSlotFee+=250;break;
+        case 6 : baseSlotFee+=350;break;
+        default: baseSlotFee+=500;break;
+    }
+
+    let serviceLevelCost = 1;
+
+    switch (serviceLevel) {
+        case 2:serviceLevelCost=4;break;
+        case 3:serviceLevelCost=8;break;
+        case 4:serviceLevelCost=13;break;
+        case 5:serviceLevelCost=20;break;
+    }
+
+    let basic = 0;
+    let multiplyFactor = 2;
+    if (airportFrom.countryCode == airportTo.countryCode) {
+        if (distance <= 1000) {
+            basic = 8;
+        } else if (distance <= 3000) {
+            basic = 10;
+        } else {
+            basic = 12;
+        }
+    } else if (airportFrom.zone == airportTo.zone){
+        if (distance <= 2000) {
+            basic = 10;
+        } else if (distance <= 4000) {
+            basic = 15;
+        } else {
+            basic = 20;
+        }
+    } else {
+        if (distance <= 2000) {
+            basic = 15;
+            multiplyFactor = 3;
+        } else if (distance <= 5000) {
+            basic = 25;
+            multiplyFactor = 3;
+        } else if (distance <= 12000) {
+            basic = 30;
+            multiplyFactor = 4;
+        } else {
+            basic = 30;
+            multiplyFactor = 4;
+        }
+    }
+
+    let staffPerFrequency = multiplyFactor * 0.4;
+    let staffPer1000Pax = multiplyFactor;
+
+    let duration = calcFlightTime(model, distance)
+    let durationInHour = duration / 60;
+
+    let price = model.price;
+    if( model.originalPrice){
+        price = model.originalPrice;
+    }
+    let baseDecayRate = 100 / model.lifespan;
+
+    let maintenance = 0;
+    let depreciationRate = 0;
+
+    let maxFlightMinutes = 4 * 24 * 60;
+    frequency = Math.floor(maxFlightMinutes / ((duration + model.turnaroundTime)*2));
+
+    let flightTime = frequency * 2 * (duration + model.turnaroundTime);
+    let availableFlightMinutes = maxFlightMinutes - flightTime;
+    let utilisation = flightTime / (maxFlightMinutes - availableFlightMinutes);
+    let planeUtilisation = (maxFlightMinutes - availableFlightMinutes) / maxFlightMinutes;
+
+    let decayRate = 100 / (model.lifespan * 3) * (1 + 2 * planeUtilisation);
+    depreciationRate += Math.floor(price * (decayRate / 100) * utilisation);
+    maintenance += model.capacity * 100 * utilisation;
+
+    let fuelCost = frequency;
+
+    if (duration <= 90){
+        fuelCost *= model.fuelBurn * duration * 5.5 * 0.08;
+    }else{
+        fuelCost *= model.fuelBurn * (duration + 495) * 0.08;
+    }
+
+    let crewCost = model.capacity * durationInHour * 12 * frequency;
+    let airportFees = (baseSlotFee * plane_category + (Math.min(3, airportTo.size) + Math.min(3, airportFrom.size)) * model.capacity) * frequency;
+    let servicesCost = (20 + serviceLevelCost * durationInHour) * model.capacity * 2 * frequency;
+    let cost = fuelCost + crewCost + airportFees + depreciationRate + servicesCost + maintenance;
+
+    let staffTotal = Math.floor(basic + staffPerFrequency * frequency + staffPer1000Pax * model.capacity * frequency / 1000);
+
+    $('#airplaneModelDetails #FCPF').text("$" + commaSeparateNumber(Math.floor(fuelCost)));
+    $('#airplaneModelDetails #CCPF').text("$" + commaSeparateNumber(Math.floor(crewCost)));
+    $('#airplaneModelDetails #AFPF').text("$" + commaSeparateNumber(airportFees));
+    $('#airplaneModelDetails #depreciation').text("$" + commaSeparateNumber(Math.floor(depreciationRate)));
+    $('#airplaneModelDetails #SSPF').text("$" + commaSeparateNumber(Math.floor(servicesCost)));
+    $('#airplaneModelDetails #maintenance').text("$" + commaSeparateNumber(Math.floor(maintenance)));
+    $('#airplaneModelDetails #cpp').text("$" + commaSeparateNumber(Math.floor(cost / (model.capacity * frequency))) + " * " + (model.capacity * frequency));
+    $('#airplaneModelDetails #cps').text("$" + commaSeparateNumber(Math.floor(cost / staffTotal)) + " * " + staffTotal);
+}
+
+window.cancelPlanLink = function cancelPlanLink() {
+	//remove the temp path
+	if (tempPath) { //create new link
+		removeTempPath()
+		//hideActiveDiv($('#planLinkDetails'))
+		$('#sidePanel').fadeOut(200) //hide the whole side panel
+	} else { //simply go back to linkDetails of the current link (exit edit mode)
+        if (document.querySelector("#viewLinkModelSelect").selectedOptions.length > 0) {
+            document.querySelector("#viewLinkModelSelect").selectedOptions[0].selected = false
+        }
+        $(document.querySelector("#viewLinkModelSelect").options).filter(function(i, option) {return option.value == document.querySelector("#planLinkModelSelect").selectedOptions[0].value})[0].selected = true;
+        $("#viewLinkModelSelect").show()
+		setActiveDiv($('#linkDetails'))
+	}
 }
 
 async function _updateLatestOilPriceInHeader() {
@@ -611,6 +1171,187 @@ async function _updateLatestOilPriceInHeader() {
     setTimeout(() => {
         _updateLatestOilPriceInHeader();
     }, Math.round(Math.max(durationTillNextTick / 2, 30000)));
+}
+
+window.loadOwnedAirplaneDetails = function loadOwnedAirplaneDetails(airplaneId, selectedItem, closeCallback, disableChangeHome) {
+	//highlight the selected model
+//	if (selectedItem) {
+//	    selectedItem.addClass("selected")
+//    }
+
+	var airlineId = activeAirline.id
+	$("#actionAirplaneId").val(airplaneId)
+	var currentCycle
+	$.ajax({
+        type: 'GET',
+        url: "current-cycle",
+        contentType: 'application/json; charset=utf-8',
+        dataType: 'json',
+        async: false,
+        success: function(result) {
+            currentCycle = result.cycle
+        },
+        error: function(jqXHR, textStatus, errorThrown) {
+                console.log(JSON.stringify(jqXHR));
+                console.log("AJAX error: " + textStatus + ' : ' + errorThrown);
+        }
+    });
+
+    currentAirplaneLoadCall =
+    {
+    		type: 'GET',
+    		url: "airlines/" + airlineId + "/airplanes/" + airplaneId,
+    	    contentType: 'application/json; charset=utf-8',
+    	    dataType: 'json',
+    	    success: function(airplane) {
+    	        var model = loadedModelsById[airplane.modelId]
+                if (model.imageUrl) {
+                    var imageLocation = 'assets/images/airplanes/' + model.name.replace(/\s+/g, '-').toLowerCase() + '.png'
+                    $('#ownedAirplaneDetail .modelIllustration img').attr('src', imageLocation)
+                    $('#ownedAirplaneDetail .modelIllustration a').attr('href', model.imageUrl)
+                    $('#ownedAirplaneDetail .modelIllustration').show()
+                } else {
+                    $('#ownedAirplaneDetail .modelIllustration').hide()
+                }
+
+    	    	$("#airplaneDetailsId").text(airplane.id)
+        		$("#airplaneDetailsCondition").text(airplane.condition.toFixed(2) + "%")
+        		$("#airplaneDetailsCondition").removeClass("warning fatal")
+        		if (airplane.condition < airplane.criticalConditionThreshold) {
+        			$("#airplaneDetailsCondition").addClass("fatal")
+        		} else if (airplane.condition < airplane.badConditionThreshold) {
+        			$("#airplaneDetailsCondition").addClass("warning")
+        		}
+        		var age = currentCycle - airplane.constructedCycle
+
+        		if (age >= 0) {
+        			$("#airplaneDetailsAge").text(getYearMonthText(age))
+        			$("#airplaneDetailsAgeRow").show()
+        			$("#airplaneDetailsDeliveryRow").hide()
+        		} else {
+        			$("#airplaneDetailsDelivery").text(age * -1 + "week(s)")
+        			$("#airplaneDetailsAgeRow").hide()
+        			$("#airplaneDetailsDeliveryRow").show()
+        		}
+    	    	$("#airplaneDetailsSellValue").text("$" + commaSeparateNumber(airplane.sellValue))
+    	    	var replaceCost = model.price - airplane.sellValue
+                $("#airplaneDetailsReplaceCost").text("$" + commaSeparateNumber(replaceCost))
+    	    	$("#airplaneDetailsLink").empty()
+    	    	if (airplane.links.length > 0) {
+    	    	    $.each(airplane.links, function(index, linkEntry) {
+    	    	        var link = linkEntry.link
+    	    	        var linkDescription = "<div style='display: flex; align-items: center;'>" + getAirportText(link.fromAirportCity, link.fromAirportCode) + "<img src='assets/images/icons/arrow.png'>" + getAirportText(link.toAirportCity, link.toAirportCode) + " " + linkEntry.frequency + " flight(s) per week</div>"
+    	    	        $("#airplaneDetailsLink").append("<div><a data-link='show-link-from-airplane' href='javascript:void(0)' onclick='closeAllAndStoreAirplaneModals(); showWorldMap(); selectLinkFromMap(" + link.id + ", true)'>" + linkDescription + "</a></div>" )
+    	    	        populateNavigation($("#airplaneDetailsLink"))
+    	    	    })
+    	    		disableButton("#sellAirplaneButton", "Cannot sell airplanes with route assigned")
+    	    	} else {
+    	    		$("#airplaneDetailsLink").text("-")
+    	    		if (age >= 0) {
+    	    		    enableButton("#sellAirplaneButton")
+    	    		} else {
+    	    			disableButton("#sellAirplaneButton", "Cannot sell airplanes that are still under construction")
+    	    		}
+
+    	    	}
+                let utilization = Math.floor((airplane.maxFlightMinutes - airplane.availableFlightMinutes) / 5760 * 100)
+    	    	$("#ownedAirplaneDetail .availableFlightMinutes").text(airplane.availableFlightMinutes)
+                $("#ownedAirplaneDetail .utilization").text(utilization)
+    	    	populateAirplaneHome(airplane, disableChangeHome)
+
+                var weeksRemainingBeforeReplacement = airplane.constructionTime - (currentCycle - airplane.purchasedCycle)
+    	    	if (weeksRemainingBeforeReplacement <= 0) {
+    	    	    if (activeAirline.balance < replaceCost) {
+                	    disableButton("#replaceAirplaneButton", "Not enough cash to replace this airplane")
+                	} else {
+    	    	        enableButton("#replaceAirplaneButton")
+                    }
+    	    	} else {
+                    disableButton("#replaceAirplaneButton", "Can only replace this airplane " + weeksRemainingBeforeReplacement + " week(s) from now")
+    	    	}
+
+    	    	$("#ownedAirplaneDetail").data("airplane", airplane)
+
+                $.ajax({
+                    type: 'GET',
+                    url: "airlines/" + airlineId + "/configurations?modelId=" + airplane.modelId,
+                    contentType: 'application/json; charset=utf-8',
+                    dataType: 'json',
+                    success: function(result) {
+                        var configuration
+                        var matchingIndex
+                        $.each(result.configurations, function(index, option) {
+                            if (option.id == airplane.configurationId) {
+                                configuration = option
+                                matchingIndex = index
+                            }
+                        })
+
+                        //just in case, sometimes it comes to a stale state
+                        if (configuration == null && result.configurations) {
+                            configuration = result.configurations[0]
+                            matchingIndex = 0
+                        }
+
+                        plotSeatConfigurationBar($('#ownedAirplaneDetailModal .configurationBar'), configuration, airplane.capacity, result.spaceMultipliers)
+
+                        if (result.configurations.length <= 1) { //then cannot change
+                            $("#ownedAirplaneDetail .configuration-view .edit").hide()
+                            $("#ownedAirplaneDetail .configuration-view .editDisabled").show()
+                        } else {
+                            $("#ownedAirplaneDetail .configuration-view .show").hide()
+
+                            //populateConfigurationOptionsFunction = function() { //delay this as the div is not visible and fusionchart would not render it
+                                $("#ownedAirplaneDetail .configuration-options").empty()
+                                $("#ownedAirplaneDetail .configuration-options").data("selectedIndex", 0)
+                                $("#ownedAirplaneDetail .configuration-options").data("optionCount", result.configurations.length)
+                                for (i = 0 ; i < result.configurations.length; i ++) {
+                                    //start from the matching one
+                                    var index = (i + matchingIndex) % result.configurations.length
+                                    var option = result.configurations[index]
+                                    var barDiv = $("<div style='width : 100%' class='configuration-option'></div>")
+                                    $("#ownedAirplaneDetail .configuration-options").append(barDiv)
+                                    barDiv.data("configurationId", option.id)
+                                    if (i != 0) { //if not the matching one, hide by default
+                                        barDiv.hide()
+                                    }
+                                    plotSeatConfigurationBar(barDiv, option, airplane.capacity, result.spaceMultipliers)
+                                }
+                            //}
+                            $("#ownedAirplaneDetail .configuration-view .edit").show()
+                            $("#ownedAirplaneDetail .configuration-view .editDisabled").hide()
+                        }
+                        $("#ownedAirplaneDetail .configuration-view").show()
+                        $("#ownedAirplaneDetail .configuration-edit").hide()
+
+                        if (closeCallback) {
+                            $("#ownedAirplaneDetailModal").data("closeCallback", function() {
+                                if ($("#ownedAirplaneDetailModal").data("hasChange")) { //only trigger close callback if there are changes
+                                    closeCallback()
+                                    $("#ownedAirplaneDetailModal").removeData("hasChange")
+                                }
+                            })
+                        } else {
+                            $("#ownedAirplaneDetailModal").removeData("closeCallback")
+                        }
+                        $("#ownedAirplaneDetailModal").fadeIn(200)
+                    },
+                     error: function(jqXHR, textStatus, errorThrown) {
+                    	            console.log(JSON.stringify(jqXHR));
+                    	            console.log("AJAX error: " + textStatus + ' : ' + errorThrown);
+                    	    }
+                });
+
+
+
+
+    	    },
+            error: function(jqXHR, textStatus, errorThrown) {
+    	            console.log(JSON.stringify(jqXHR));
+    	            console.log("AJAX error: " + textStatus + ' : ' + errorThrown);
+    	    }
+    	}
+	$.ajax(currentAirplaneLoadCall);
 }
 
 function commaSeparateNumberForLinks(val) {
@@ -1402,7 +2143,7 @@ function calcFlightTime(plane, distance){
 function calcFuelBurn(plane, distance){
     let timeFlight = calcFlightTime(plane, distance);
     if (timeFlight > 1.5){
-        return plane.fuelBurn * (405 + timeFlight);
+        return plane.fuelBurn * (495 + timeFlight);
     } else {
         return plane.fuelBurn * timeFlight * 5.5;
     }
@@ -1846,7 +2587,7 @@ window.updateModelInfo = function(modelId) {
     if (linkModel.duration <= 90){
         fuelCost *= model.fuelBurn * linkModel.duration * 5.5 * 0.08;
     }else{
-        fuelCost *= model.fuelBurn * (linkModel.duration + 405) * 0.08;
+        fuelCost *= model.fuelBurn * (linkModel.duration + 495) * 0.08;
     }
 
     let crewCost = model.capacity * durationInHour * 12 * frequency;
@@ -1926,6 +2667,140 @@ $("#airplaneModelDetails #speed").parent().after(`
 <div class="table-row">
     <div class="label">&#8205;</div>
 </div>`);
+
+$('#researchSearchResult > div.table.data.links > div.table-header').html(`
+									  <div class="cell" style="width: 25%;"><h5>Airline</h5></div>
+                                      <div class="cell" style="width: 25%;"><h5>Model</h5></div>
+									  <div class="cell" style="width: 24%;"><h5>Price</h5></div>
+									  <div class="cell" style="width: 20%;"><h5>Capacity</h5></div>
+									  <div class="cell" style="width: 13%;"><h5>Quality</h5></div>
+									  <div class="cell" style="width: 13%;"><h5>Freq.</h5></div>
+								  `);
+$("#researchSearchResult > div.table.data.links").after(`<select class="select-css" id="researchFlightModelSelect" onchange="researchUpdateModelInfo($(this).val())" style="margin: 10px auto; float: middle;"></select>
+<div id="researchExtendedPanel" class="section" style="width: 50%; margin: 0px auto;">
+							<div id="researchAirplaneModelDetails" style="width: 100%;" class="active">
+								<div class="table">
+									<h4>Airplane Model Details</h4>
+									<div class="table-row">
+										<div class="label"><h5>Model:</h5></div>
+										<div class="value" id="modelName"></div>
+									</div>
+									<div class="table-row">
+										<div class="label"><h5>Family:</h5></div>
+										<div class="value modelFamily"></div>
+									</div>
+									<div class="table-row">
+										<div class="label"><h5>Max Capacity:</h5></div>
+										<div class="value" id="capacity"></div>
+									</div>
+									<div class="table-row">
+										<div class="label"><h5>Max Flying Range:</h5></div>
+										<div class="value" id="range"></div>
+									</div>
+									<div class="table-row">
+										<div class="label"><h5>Fuel Burn:</h5></div>
+										<div class="value" id="fuelBurn"></div>
+									</div>
+									<div class="table-row">
+										<div class="label"><h5>Category:</h5></div>
+										<div class="value" id="airplaneType"></div>
+									</div>
+									<div class="table-row">
+										<div class="label"><h5>Turnaround Time:</h5></div>
+										<div class="value"><span class="turnaroundTime"></span>&nbsp;min</div>
+									</div>
+									<div class="table-row">
+										<div class="label"><h5>Runway requirement:</h5></div>
+										<div class="value"><span class="runwayRequirement"></span>&nbsp;m</div>
+									</div>
+									<div class="table-row">
+										<div class="label"><h5>Speed:</h5></div>
+										<div class="value" id="speed"></div>
+									</div>
+<div class="table-row">
+    <div class="label">‍</div>
+</div>
+<div class="table-row">
+    <div class="label">
+        <h5>--  Costs  --</h5>
+    </div>
+</div>
+<div class="table-row">
+    <div class="label">
+        <h5>Fuel cost:</h5>
+    </div>
+    <div class="value" id="FCPF"></div>
+</div>
+<div class="table-row">
+    <div class="label">
+        <h5>Crew cost:</h5>
+    </div>
+    <div class="value" id="CCPF"></div>
+</div>
+<div class="table-row">
+    <div class="label">
+        <h5>Airport fees:</h5>
+    </div>
+    <div class="value" id="AFPF"></div>
+</div>
+<div class="table-row">
+    <div class="label">
+        <h5>Depreciation (wip):</h5>
+    </div>
+    <div class="value" id="depreciation"></div>
+</div>
+<div class="table-row">
+    <div class="label">
+        <h5>Service supplies:</h5>
+    </div>
+    <div class="value" id="SSPF"></div>
+</div>
+<div class="table-row">
+    <div class="label">
+        <h5>Maintenance (wip):</h5>
+    </div>
+    <div class="value" id="maintenance"></div>
+</div>
+<div class="table-row">
+    <div class="label">
+        <h5>Cost per PAX:</h5>
+    </div>
+    <div class="value" id="cpp"></div>
+</div>
+<div class="table-row">
+    <div class="label">
+        <h5>Cost per staff:</h5>
+    </div>
+    <div class="value" id="cps"></div>
+</div>
+<div class="table-row">
+    <div class="label">‍</div>
+</div>
+									<div class="table-row">
+										<div class="label"><h5>Max Lifespan:</h5></div>
+										<div class="value" id="lifespan"></div>
+									</div>
+									<div class="table-row">
+										<div class="label"><h5>Manufacturer:</h5></div>
+										<div class="value manufacturer"></div>
+									</div>
+									<div class="table-row">
+										<div class="label"><h5>Purchase Price:</h5></div>
+										<div class="value price"></div>
+									</div>
+									<div class="table-row">
+										<div class="label"><h5>Delivery Time:</h5></div>
+										<div class="value delivery warning"></div>
+									</div>
+									<div class="button add" onclick="promptBuyNewAirplane($('#researchAirplaneModelDetails .selectedModel').val(), true, activeAirline.headquarterAirport.airportId)">Place Order</div>
+									<div class="button" onclick="showAirplaneBaseFromPlanLink($('#researchAirplaneModelDetails .selectedModel').val())">Base</div>
+									<div class="button" onclick="showAirplaneModelConfigurationsFromPlanLink($('#researchAirplaneModelDetails .selectedModel').val())">Config</div>
+									<input type="hidden" class="selectedModel" value="">
+								</div>
+							</div>
+						</div>`);
+$("#airplaneModelDetails > div").before(`<select class="select-css" id="viewLinkModelSelect" onchange="linkUpdateModelInfo($(this).val())" style="margin: 10px auto; float: middle;"></select>`)
+$("#ownedAirplaneDetail > div.table > div:nth-child(9) > div:nth-child(2)").html(`<span class="availableFlightMinutes"></span> Minute(s) / <span class="utilization"></span>% utilization`)
 
 if (REMOVE_MOVING_BACKGROUND === true) {
     $('body').attr({style:`background: ${SOLID_BACKGROUND_COLOR};`});
