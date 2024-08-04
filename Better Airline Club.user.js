@@ -29,7 +29,7 @@ var DEFAULT_MIN_CAPACITY_FILTER = 0;
 // Plugin code starts here and goes to the end...
 // Feel free to leave a comment on the gist if you have any questions or requests: https://gist.github.com/aphix/fdeeefbc4bef1ec580d72639bbc05f2d
 // Want to donate? Don't. Buy yourself some ETH. If that works out nice and you want to pay it back later then find me on github.
-// Note: Thanks continentalysky for the commission!
+// Note from Fly or die: I've released v2 of this mod. Thanks continentalysky for the commission!  
 
 function reportAjaxError(jqXHR, textStatus, errorThrown) {
     console.error(JSON.stringify(jqXHR));
