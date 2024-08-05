@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         [BETA] BAC with H/T/D/T
 // @namespace    http://tampermonkey.net/
-// @version      2.0.1
+// @version      2.0.2
 // @description  Enhances airline-club.com and v2.airline-club.com airline management game (protip: Sign into your 2 accounts with one on each domain to avoid extra logout/login). Install this script with automatic updates by first installing TamperMonkey/ViolentMonkey/GreaseMonkey and installing it as a userscript.
 // @author       Aphix/Torus (original "Cost Per PAX" portion by Alrianne @ https://github.com/wolfnether/Airline_Club_Mod/)
 // @match        https://*.airline-club.com/
@@ -29,7 +29,7 @@ var DEFAULT_MIN_CAPACITY_FILTER = 0;
 // Plugin code starts here and goes to the end...
 // Feel free to leave a comment on the gist if you have any questions or requests: https://gist.github.com/aphix/fdeeefbc4bef1ec580d72639bbc05f2d
 // Want to donate? Don't. Buy yourself some ETH. If that works out nice and you want to pay it back later then find me on github.
-// Note from Fly or die: I've released v2 of this mod. Thanks continentalysky for the commission!  
+// Note: Thanks continentalysky for the commission!
 
 function reportAjaxError(jqXHR, textStatus, errorThrown) {
     console.error(JSON.stringify(jqXHR));
@@ -258,6 +258,8 @@ async function _doAutomaticPriceUpdateFor(link) {
 //load history
 async function loadHistoryForLink(airlineId, linkId, cycleCount, link) {
     const linkHistory = await _request(`airlines/${airlineId}/link-consumptions/${linkId}?cycleCount=${cycleCount}`);
+
+    $('#linkEventChart').data('linkConsumptions', linkHistory)
 
     if (jQuery.isEmptyObject(linkHistory)) {
         $("#linkHistoryPrice").text("-")
@@ -528,6 +530,7 @@ window._getPlotUnit = function _getPlotUnit() {
 window.loadLink = async function loadLink(airlineId, linkId) {
     const link = await _request(`airlines/${airlineId}/links/${linkId}`)
 
+    $('#linkEventModal').data('link', link)
     $("#linkFromAirport").attr("onclick", "showAirportDetails(" + link.fromAirportId + ")").html(getCountryFlagImg(link.fromCountryCode) + getAirportText(link.fromAirportCity, link.fromAirportCode))
     //$("#linkFromAirportExpectedQuality").attr("onclick", "loadLinkExpectedQuality(" + link.fromAirportId + "," + link.toAirportId + "," + link.fromAirportId + ")")
     $("#linkToAirport").attr("onclick", "showAirportDetails(" + link.toAirportId + ")").html(getCountryFlagImg(link.toCountryCode) + getAirportText(link.toAirportCity, link.toAirportCode))
