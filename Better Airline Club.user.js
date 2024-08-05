@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         [BETA] BAC with H/T/D/T
 // @namespace    http://tampermonkey.net/
-// @version      2.0.2
+// @version      2.0.1
 // @description  Enhances airline-club.com and v2.airline-club.com airline management game (protip: Sign into your 2 accounts with one on each domain to avoid extra logout/login). Install this script with automatic updates by first installing TamperMonkey/ViolentMonkey/GreaseMonkey and installing it as a userscript.
 // @author       Aphix/Torus (original "Cost Per PAX" portion by Alrianne @ https://github.com/wolfnether/Airline_Club_Mod/)
 // @match        https://*.airline-club.com/
@@ -1000,7 +1000,7 @@ window.linkUpdateModelInfo = function linkUpdateModelInfo(modelId) {
 		enableButton($('#airplaneModelDetails .add'))
 	}
 
-    let serviceLevel = 40;
+    let serviceLevel = routeInfo.rawQuality;
     let frequency = 0;
 
     let plane_category = _getPlaneCategoryFor(model);
