@@ -663,7 +663,7 @@ async function _updateLatestOilPriceInHeader() {
 
     setTimeout(() => {
         _updateLatestOilPriceInHeader();
-    }, Math.round(Math.max(durationTillNextTick / 2, 30000)));
+    }, Math.round(Math.max(typeof durationTillNextTick !== 'undefined' ? durationTillNextTick / 2 : 60000, 60000)));
 }
 
 function commaSeparateNumberForLinks(val) {
