@@ -1,14 +1,15 @@
 // ==UserScript==
-// @name         [ALPHA] BAC with H/T/D/T
+// @name         [BETA] BAC with H/T/D/T
 // @namespace    http://tampermonkey.net/
-// @version      2.1.0
+// @version      2.1.1
 // @description  Enhances airline-club.com and v2.airline-club.com airline management game (protip: Sign into your 2 accounts with one on each domain to avoid extra logout/login). Install this script with automatic updates by first installing TamperMonkey/ViolentMonkey/GreaseMonkey and installing it as a userscript.
 // @author       Aphix/Torus (original "Cost Per PAX" portion by Alrianne @ https://github.com/wolfnether/Airline_Club_Mod/)
-// @match        https://*.airline-club.com/
-// @icon         https://www.google.com/s2/favicons?domain=airline-club.com
+// @match        https://*.airline-club.com/*
+// @icon         https://www.airline-club.com/favicon.ico
 // @downloadURL  https://github.com/Bohaska/bac/raw/main/Better%20Airline%20Club.user.js
 // @updateURL    https://github.com/Bohaska/bac/raw/main/Better%20Airline%20Club.user.js
 // @grant        GM_info
+// @grant        unsafeWindow
 // ==/UserScript==
 
 var MIN_PLANES_TO_HIGHLIGHT = 500; // Changes which planes get the gold shadow/highlight on plane purchase table (not affected by filters in table header)
@@ -76,7 +77,7 @@ function averageFromSubKey(array, ...subKeys) {
     return array.map(obj => _seekSubVal(obj, ...subKeys)).reduce((sum, val) => sum += (val || 0), 0) / array.length;
 }
 
-function _populateDerivedFieldsOnLink(link) {
+function _populateDerivedFieldsOnLink(link, fundingProjection) {
     link.totalCapacity = link.capacity.economy + link.capacity.business + link.capacity.first
     link.totalCapacityHistory = link.capacityHistory.economy + link.capacityHistory.business + link.capacityHistory.first
     link.totalPassengers = link.passengers.economy + link.passengers.business + link.passengers.first
@@ -88,6 +89,16 @@ function _populateDerivedFieldsOnLink(link) {
         assignedModel = "-"
     }
     link.model = assignedModel //so this can be sorted
+
+    // SQ Cost Calculation and Profit Adjustment
+    if (fundingProjection && activeAirline && activeAirline.serviceQuality > 0) {
+        const capacityForSq = (link.capacityHistory.total > 0) ? link.capacityHistory : link.capacity;
+        const tempLinkForSq = { capacity: capacityForSq, distance: link.distance };
+        link.sqCost = calculateSqCost(tempLinkForSq, fundingProjection, activeAirline.serviceQuality);
+        link.profit -= link.sqCost;
+    } else {
+        link.sqCost = 0;
+    }
 
     link.profitMarginPercent = link.revenue === 0
         ? 0
@@ -108,11 +119,11 @@ function _populateDerivedFieldsOnLink(link) {
 
 
 function getAirportText(city, airportCode) {
-	if (city) {
-		return city + " (" + airportCode + ")"
-	} else {
-		return airportCode
-	}
+    if (city) {
+        return city + " (" + airportCode + ")"
+    } else {
+        return airportCode
+    }
 }
 
 function plotHistory(linkConsumptions) {
@@ -176,6 +187,64 @@ function getTierFromPercent(val, min = 0, max = 100) {
 
     return 5;
 }
+
+var cachedFundingProjection = null;
+
+/**
+ * Fetches the airline's total service funding projection.
+ * Caches the result to avoid repeated API calls.
+ * @param {number} airlineId The ID of the active airline.
+ * @returns {Promise<number>} The funding projection amount.
+ */
+async function getFundingProjection(airlineId) {
+    if (cachedFundingProjection === null) {
+        try {
+            const result = await _request(`airlines/${airlineId}/service-funding-projection`);
+            cachedFundingProjection = result.fundingProjection;
+        } catch (e) {
+            console.error("Failed to fetch service funding projection. SQ Cost will be 0.", e);
+            cachedFundingProjection = 0; // Set to 0 on failure to prevent re-fetching
+        }
+    }
+    return cachedFundingProjection;
+}
+
+/**
+ * Calculates the Service Quality (SQ) cost for a specific link.
+ * The formula is derived from the provided SQ Cost Calculator script.
+ * @param {object} link The link object, must contain capacity and distance properties.
+ * @param {number} fundingProjection The total projected funding for the airline.
+ * @param {number} baseSq The base service quality level set by the airline (0-100).
+ * @returns {number} The calculated SQ cost for the link.
+ */
+function calculateSqCost(link, fundingProjection, baseSq) {
+    if (!fundingProjection || !baseSq || !link.capacity || link.capacity.total === 0 || !link.distance) {
+        return 0;
+    }
+
+    const ecoEquivalentTotalCapacity = Math.floor(link.capacity.economy + (link.capacity.business * 2.5) + (link.capacity.first * 6));
+    if (ecoEquivalentTotalCapacity === 0) {
+        return 0;
+    }
+
+    const linkPassengerMileFreq = ecoEquivalentTotalCapacity * link.distance;
+    const qualityComponent = Math.pow(baseSq / 40, 2.5);
+
+    if (qualityComponent === 0) {
+         return 0;
+    }
+
+    const totalPaxCapacityFreqMileCost = (fundingProjection * 4000) / (qualityComponent * 30);
+    if (totalPaxCapacityFreqMileCost === 0) {
+        return 0; // Avoid division by zero
+    }
+
+    const sqCostProportion = linkPassengerMileFreq / totalPaxCapacityFreqMileCost;
+    const finalCost = Math.round(fundingProjection * sqCostProportion);
+
+    return finalCost;
+}
+
 
 async function loadCompetitionForLink(airlineId, link) {
     const linkConsumptions = await _request(`airports/${link.fromAirportId}/to/${link.toAirportId}`);
@@ -248,6 +317,7 @@ async function _doAutomaticPriceUpdateFor(link) {
 
 //load history
 async function loadHistoryForLink(airlineId, linkId, cycleCount, link) {
+    const fundingProjection = await getFundingProjection(airlineId);
     const linkHistory = await _request(`airlines/${airlineId}/link-consumptions/${linkId}?cycleCount=${cycleCount}`);
 
     if (jQuery.isEmptyObject(linkHistory)) {
@@ -290,12 +360,6 @@ async function loadHistoryForLink(airlineId, linkId, cycleCount, link) {
         </div>`)
     }
 
-    //if (!$("#doAutomaticPriceUpdate").length) {
-    //    $("#linkLoadFactor").parent().after(`<div class="table-row" style="color:#999">
-    //        <div class="button" id="doAutomaticPriceUpdate">Auto Manage</div>
-    //    </div>`)
-    //}
-
     const averageLoadFactor = getLoadFactorsFor({
         soldSeats: {
             economy: averageFromSubKey(linkHistory, 'soldSeats', 'economy'),
@@ -310,6 +374,26 @@ async function loadHistoryForLink(airlineId, linkId, cycleCount, link) {
     });
 
     var latestLinkData = linkHistory[0]
+
+    // SQ Cost calculation and display
+    let sqCost = 0;
+    if (fundingProjection && activeAirline && activeAirline.serviceQuality > 0) {
+        const tempLinkForSq = { capacity: latestLinkData.capacity, distance: link.distance };
+        sqCost = calculateSqCost(tempLinkForSq, fundingProjection, activeAirline.serviceQuality);
+    }
+
+    if (!$("#linkSqCost").length) {
+        $("#linkServiceSupplies").parent().after(`<div class="table-row">
+            <div class="label"><h5>Service Funding:</h5></div>
+            <div class="value" id="linkSqCost"></div>
+        </div>`);
+    }
+    $("#linkSqCost").text('$' + commaSeparateNumber(sqCost));
+
+    // Adjust profit
+    latestLinkData.profit -= sqCost;
+    // Note: Average profit over time is not adjusted as SQ settings could have changed.
+
     $("#linkHistoryPrice").text(toLinkClassValueString(latestLinkData.price, "$"))
     $("#linkHistoryCapacity").text(toLinkClassValueString(latestLinkData.capacity))
 
@@ -506,17 +590,17 @@ async function loadLinkSurvey(airlineId, link) {
 }
 
 let lastPlotUnit;
-window._getPlotUnit = function _getPlotUnit() {
+unsafeWindow._getPlotUnit = function _getPlotUnit() {
     let checkedElem = $('#linkDetails fieldset .switch input:checked')[0];
 
     if (!checkedElem && lastPlotUnit) {
         return lastPlotUnit;
     }
 
-    return lastPlotUnit = window.plotUnitEnum[checkedElem ? $(checkedElem).val().toUpperCase() : 'MONTH']
+    return lastPlotUnit = unsafeWindow.plotUnitEnum[checkedElem ? $(checkedElem).val().toUpperCase() : 'MONTH']
 }
 
-window.loadLink = async function loadLink(airlineId, linkId) {
+unsafeWindow.loadLink = async function loadLink(airlineId, linkId) {
     const link = await _request(`airlines/${airlineId}/links/${linkId}`)
 
     $('#linkEventModal').data('link', link)
@@ -549,19 +633,19 @@ window.loadLink = async function loadLink(airlineId, linkId) {
     const [
         linkCompetition,
         linkHistory,
-        linkSurvey, 
+        linkSurvey,
     ] = await Promise.all([
         loadCompetitionForLink(airlineId, link),
         loadHistoryForLink(airlineId, linkId, cycleCount, link),
-        loadLinkSurvey(airlineId, link), 
+        loadLinkSurvey(airlineId, link),
     ])
 
     var explicitlySelectedModelId = $("#planLinkModelSelect").data('explicitId')
     const assignedModelId = link.modelId
-	var selectedModelId
-	if (explicitlySelectedModelId) {
-		selectedModelId = explicitlySelectedModelId;
-	} else {
+    var selectedModelId
+    if (explicitlySelectedModelId) {
+        selectedModelId = explicitlySelectedModelId;
+    } else {
         selectedModelId = assignedModelId
     }
 
@@ -576,12 +660,12 @@ window.loadLink = async function loadLink(airlineId, linkId) {
 
     var arrayModels = Object.values(loadedModelsById)
     $.each(arrayModels, function(key, modelPlanLinkInfo) {
-		if (modelPlanLinkInfo.id == selectedModelId) {
-			modelPlanLinkInfo.owned = true
-		} else {
-			modelPlanLinkInfo.owned = false
-		}
-	})
+        if (modelPlanLinkInfo.id == selectedModelId) {
+            modelPlanLinkInfo.owned = true
+        } else {
+            modelPlanLinkInfo.owned = false
+        }
+    })
     arrayModels = sortPreserveOrder(arrayModels, "owned", false)
 
     $("#viewLinkModelSelect").children('option').remove()
@@ -602,8 +686,8 @@ window.loadLink = async function loadLink(airlineId, linkId) {
         }
     });
 
-	$("#viewLinkModelSelect").show()
-	setActiveDiv($("#extendedPanel #airplaneModelDetails"))
+    $("#viewLinkModelSelect").show()
+    setActiveDiv($("#extendedPanel #airplaneModelDetails"))
 
     return {
         link,
@@ -613,14 +697,14 @@ window.loadLink = async function loadLink(airlineId, linkId) {
     };
 }
 
-const _editLink = window.editLink
-window.editLink = function editLink(linkId) {
+const _editLink = unsafeWindow.editLink
+unsafeWindow.editLink = function editLink(linkId) {
     $("#viewLinkModelSelect").hide()
     _editLink(linkId)
 }
 
-const _cancelPlanLink = window.cancelPlanLink;
-window.cancelPlanLink = function cancelPlanLink() {
+const _cancelPlanLink = unsafeWindow.cancelPlanLink;
+unsafeWindow.cancelPlanLink = function cancelPlanLink() {
     _cancelPlanLink(); // Call original function first
     if (!tempPath) { // Logic from Script 2: if we are cancelling an *edit* (not a new link)
         if (document.querySelector("#viewLinkModelSelect").selectedOptions.length > 0) {
@@ -628,7 +712,7 @@ window.cancelPlanLink = function cancelPlanLink() {
         }
         $(document.querySelector("#viewLinkModelSelect").options).filter(function(i, option) {return option.value == document.querySelector("#planLinkModelSelect").selectedOptions[0].value})[0].selected = true;
         $("#viewLinkModelSelect").show()
-		setActiveDiv($('#linkDetails'))
+        setActiveDiv($('#linkDetails'))
     }
 }
 
@@ -723,7 +807,7 @@ function _refreshTicks() {
     _updateIntervalTimeout = setTimeout(() => _refreshTicks(), refreshInterval);
 }
 
-var _updateTime = window.updateTime = function updateTime(cycle, fraction, cycleDurationEstimation) {
+var _updateTime = unsafeWindow.updateTime = function updateTime(cycle, fraction, cycleDurationEstimation) {
     console.log('internal updateTime');
     console.dir({cycle, fraction, cycleDurationEstimation});
 
@@ -744,7 +828,7 @@ var _updateTime = window.updateTime = function updateTime(cycle, fraction, cycle
     _refreshTicks();
 }
 
-window.onMessage = function onMessage(evt) { //right now the message is just the cycle #, so refresh the panels
+unsafeWindow.onMessage = function onMessage(evt) { //right now the message is just the cycle #, so refresh the panels
     console.log('onMessagehit');
     var json = JSON.parse(evt.data)
     if (json.ping) { //ok
@@ -754,9 +838,9 @@ window.onMessage = function onMessage(evt) { //right now the message is just the
     console.log("websocket received message : " + evt.data)
 
     if (json.messageType == "cycleInfo") { //update time
-        window.updateTime(json.cycle, json.fraction, json.cycleDurationEstimation)
-        //	} else if (json.messageType == "cycleStart") { //update time
-        //		updateTime(json.cycle, 0)
+        unsafeWindow.updateTime(json.cycle, json.fraction, json.cycleDurationEstimation)
+        //  } else if (json.messageType == "cycleStart") { //update time
+        //      updateTime(json.cycle, 0)
     } else if (json.messageType == "cycleCompleted") {
         if (selectedAirlineId) {
             refreshPanels(selectedAirlineId)
@@ -778,7 +862,7 @@ window.onMessage = function onMessage(evt) { //right now the message is just the
 
 function launch(){
 
-    window.plotUnitEnum = {
+    unsafeWindow.plotUnitEnum = {
         "WEEK": {
             "value": 4,
             "maxWeek": 28,
@@ -805,49 +889,49 @@ function launch(){
         }
     }
 
-    window.commaSeparateNumberForLinks = commaSeparateNumberForLinks;
+    unsafeWindow.commaSeparateNumberForLinks = commaSeparateNumberForLinks;
 
-    var cachedTotalsById = window.cachedTotalsById = {};
-    window.cachedTotalsById = cachedTotalsById;
+    var cachedTotalsById = unsafeWindow.cachedTotalsById = {};
+    unsafeWindow.cachedTotalsById = cachedTotalsById;
 
-	window.loadAirplaneModelStats = async function loadAirplaneModelStats(modelInfo, opts = {}) {
-	    var url
-	    var favoriteIcon = $("#airplaneModelDetail .favorite")
-	    var model = loadedModelsById[modelInfo.id]
-	    if (activeAirline) {
-	        url = "airlines/" + activeAirline.id + "/airplanes/model/" + model.id + "/stats",
-	        favoriteIcon.show()
-	    } else {
-	        url = "airplane-models/" + model.id + "/stats"
-	        favoriteIcon.hide()
-	    }
+    unsafeWindow.loadAirplaneModelStats = async function loadAirplaneModelStats(modelInfo, opts = {}) {
+        var url
+        var favoriteIcon = $("#airplaneModelDetail .favorite")
+        var model = loadedModelsById[modelInfo.id]
+        if (activeAirline) {
+            url = "airlines/" + activeAirline.id + "/airplanes/model/" + model.id + "/stats",
+            favoriteIcon.show()
+        } else {
+            url = "airplane-models/" + model.id + "/stats"
+            favoriteIcon.hide()
+        }
 
         if (opts && opts.totalOnly && model.in_use  && model.in_use !== -1) {
-        	return;
+            return;
         }
 
         if (opts && opts.totalOnly && cachedTotalsById[model.id]) {
-        	model.in_use = cachedTotalsById[model.id];
-        	return;
+            model.in_use = cachedTotalsById[model.id];
+            return;
         }
 
         const stats = await _request(url);
 
         if (opts && opts.totalOnly) {
-    		cachedTotalsById[model.id] = model.in_use = stats.total;
-        	return;
+            cachedTotalsById[model.id] = model.in_use = stats.total;
+            return;
         }
 
-    	updateTopOperatorsTable(stats)
-    	$('#airplaneCanvas .total').text(stats.total)
+        updateTopOperatorsTable(stats)
+        $('#airplaneCanvas .total').text(stats.total)
 
-    	cachedTotalsById[model.id] = model.in_use = stats.total;
+        cachedTotalsById[model.id] = model.in_use = stats.total;
 
-    	if (stats.favorite === undefined) {
-    		return;
-    	}
+        if (stats.favorite === undefined) {
+            return;
+        }
 
-	    favoriteIcon.off() //remove all listeners
+        favoriteIcon.off() //remove all listeners
 
         if (stats.favorite.rejection) {
             $("#setFavoriteModal").data("rejection", stats.favorite.rejection)
@@ -863,9 +947,9 @@ function launch(){
         }
 
         $("#setFavoriteModal").data("model", model)
-	}
+    }
 
-    window.updateCustomLinkTableHeader = function updateCustomLinkTableHeader() {
+    unsafeWindow.updateCustomLinkTableHeader = function updateCustomLinkTableHeader() {
         if ($('#linksTableSortHeader').children().length === 16) {
             return;
         }
@@ -941,7 +1025,8 @@ function launch(){
         `);
     }
 
-    window.loadLinksTable = async function loadLinksTable() {
+    unsafeWindow.loadLinksTable = async function loadLinksTable() {
+        const fundingProjection = await getFundingProjection(activeAirline.id);
         const links = await _request(`airlines/${activeAirline.id}/links-details`);
 
         await Promise.all(links.map(async link => {
@@ -952,14 +1037,14 @@ function launch(){
         updateCustomLinkTableHeader();
         updateLoadedLinks(links);
 
-        $.each(links, (key, link) => _populateDerivedFieldsOnLink(link));
+        $.each(links, (key, link) => _populateDerivedFieldsOnLink(link, fundingProjection));
 
         var selectedSortHeader = $('#linksTableSortHeader .cell.selected')
         updateLinksTable(selectedSortHeader.data('sort-property'), selectedSortHeader.data('sort-order'))
     }
 
     var colorKeyMaps = {};
-    window.updateLinksTable = function updateLinksTable(sortProperty, sortOrder) {
+    unsafeWindow.updateLinksTable = function updateLinksTable(sortProperty, sortOrder) {
         var linksTable = $("#linksCanvas #linksTable")
         linksTable.children("div.table-row").remove()
 
@@ -1051,7 +1136,7 @@ function launch(){
         });
     }
 
-    window.refreshLinkDetails = async function refreshLinkDetails(linkId) {
+    unsafeWindow.refreshLinkDetails = async function refreshLinkDetails(linkId) {
         const airlineId = activeAirline.id
 
         $("#linkCompetitons .data-row").remove()
@@ -1121,7 +1206,7 @@ function launch(){
     }
 
 
-    window.refreshLinkCharts = async function refreshLinkCharts(parentEl) {
+    unsafeWindow.refreshLinkCharts = async function refreshLinkCharts(parentEl) {
         var _checkedElem = $('#linkDetails fieldset .switch input:checked')[0];
 
         $('#linkDetails fieldset .switch input').each((index, childElem) => {
@@ -1129,7 +1214,7 @@ function launch(){
             $(childElem).attr('checked', same);
         })
 
-        window.plotUnit = plotUnit = plotUnitEnum[$(_checkedElem).val().toUpperCase() || 'MONTH'];
+        unsafeWindow.plotUnit = plotUnit = plotUnitEnum[$(_checkedElem).val().toUpperCase() || 'MONTH'];
 
         var cycleCount = plotUnit.maxWeek
         const actionLinkId = $("#actionLinkId").val();
@@ -1139,12 +1224,12 @@ function launch(){
         $("#linkHistoryDetails").show();
     }
 
-    window.plotLinkCharts = function plotLinkCharts(linkConsumptions, plotUnit = _getPlotUnit()) {
+    unsafeWindow.plotLinkCharts = function plotLinkCharts(linkConsumptions, plotUnit = _getPlotUnit()) {
         plotLinkProfit(linkConsumptions, $("#linkProfitChart"), plotUnit)
         plotLinkConsumption(linkConsumptions, $("#linkRidershipChart"), $("#linkRevenueChart"), $("#linkPriceChart"), plotUnit)
     }
 
-    window.plotLinkConsumption = function plotLinkConsumption(linkConsumptions, ridershipContainer, revenueContainer, priceContainer, plotUnit) {
+    unsafeWindow.plotLinkConsumption = function plotLinkConsumption(linkConsumptions, ridershipContainer, revenueContainer, priceContainer, plotUnit) {
         ridershipContainer.children(':FusionCharts').each(function(i) { $(this)[0].dispose() });
         revenueContainer.children(':FusionCharts').each(function(i) { $(this)[0].dispose() });
         priceContainer.children(':FusionCharts').each(function(i) { $(this)[0].dispose() });
@@ -1568,7 +1653,7 @@ function _getPlaneCategoryFor(plane) {
 
 let initialAirplaneModelStatsLoading = true;
 
-window.updateAirplaneModelTable = function(sortProperty, sortOrder) {
+unsafeWindow.updateAirplaneModelTable = function(sortProperty, sortOrder) {
     let distance = parseInt($("#flightRange").val(), 10);
     let runway = parseInt($("#runway").val(), 10);
     let min_capacity = parseInt($("#min_capacity").val(), 10);
@@ -1625,7 +1710,7 @@ window.updateAirplaneModelTable = function(sortProperty, sortOrder) {
                 if (!initialAirplaneModelStatsLoading) {
                     return;
                 }
-                if (window.cachedTotalsById && Object.keys(window.cachedTotalsById).length === loadedModelsOwnerInfo.length) {
+                if (unsafeWindow.cachedTotalsById && Object.keys(unsafeWindow.cachedTotalsById).length === loadedModelsOwnerInfo.length) {
                     initialAirplaneModelStatsLoading = false;
                     updateAirplaneModelTable();
                 }
@@ -1782,15 +1867,15 @@ var newDataFilterElements = [
 ]
 
 for (var el of newDataFilterElements) {
-    $(el).change(function(){window.updateAirplaneModelTable()});
+    $(el).change(function(){unsafeWindow.updateAirplaneModelTable()});
 }
 
 //* Link Cost Preview
 
-let _updatePlanLinkInfo = window.updatePlanLinkInfo;
-let _updateTotalValues = window.updateTotalValues;
+let _updatePlanLinkInfo = unsafeWindow.updatePlanLinkInfo;
+let _updateTotalValues = unsafeWindow.updateTotalValues;
 
-window.latestActiveLink = null;
+unsafeWindow.latestActiveLink = null;
 
 let activeLink;
 let idFrom = -1;
@@ -1810,14 +1895,14 @@ observer.observe(
     }
 );
 
-window.updateTotalValues = function(){
+unsafeWindow.updateTotalValues = function(){
     _updateTotalValues();
-    window.updateModelInfo(_modelId);
+    unsafeWindow.updateModelInfo(_modelId);
 }
 
-window.updatePlanLinkInfo = function(linkInfo){
+unsafeWindow.updatePlanLinkInfo = function(linkInfo){
     //console.log(linkInfo);
-    window.latestActiveLink = activeLink = linkInfo;
+    unsafeWindow.latestActiveLink = activeLink = linkInfo;
 
     for (let model of activeLink.modelPlanLinkInfo){
         for (let airplane of model.airplanes){
@@ -1846,9 +1931,9 @@ window.updatePlanLinkInfo = function(linkInfo){
     _updatePlanLinkInfo(linkInfo);
 }
 
-let _updateModelInfo = window.updateModelInfo;
+let _updateModelInfo = unsafeWindow.updateModelInfo;
 
-window.updateModelInfo = function(modelId) {
+unsafeWindow.updateModelInfo = function(modelId) {
     if (_modelId != modelId){
         _updateModelInfo(modelId);
     }
@@ -2063,7 +2148,7 @@ $("#airplaneModelDetails #speed").parent().after(`
     <div class="label">&#8205;</div>
 </div>`);
 
-window.researchFlight = async function researchFlight(fromAirportId, toAirportId) {
+unsafeWindow.researchFlight = async function researchFlight(fromAirportId, toAirportId) {
     if (fromAirportId && toAirportId) {
         $('body .loadingSpinner').show();
         const result = await _request("research-link/" + fromAirportId + "/" + toAirportId).finally(() => $('body .loadingSpinner').hide());
@@ -2217,12 +2302,12 @@ function _genericUpdateModelInfo(modelId, routeInfo, containerSelector, serviceL
     model.rejection ? disableButton($container.find('.add'), model.rejection) : enableButton($container.find('.add'));
 }
 
-window.researchUpdateModelInfo = function(modelId) {
+unsafeWindow.researchUpdateModelInfo = function(modelId) {
     let routeInfo = $("#searchCanvas").data();
     _genericUpdateModelInfo(modelId, routeInfo, '#researchAirplaneModelDetails', 40); // 40 is default service level
 };
 
-window.linkUpdateModelInfo = function(modelId) {
+unsafeWindow.linkUpdateModelInfo = function(modelId) {
     let routeInfo = $("#detailsPanel").data();
     _genericUpdateModelInfo(modelId, routeInfo, '#airplaneModelDetails', routeInfo.rawQuality);
 };
