@@ -6,6 +6,8 @@
 // @author       Aphix/Torus (original "Cost Per PAX" portion by Alrianne @ https://github.com/wolfnether/Airline_Club_Mod/)
 // @match        https://*.airline-club.com/
 // @icon         https://www.google.com/s2/favicons?domain=airline-club.com
+// @downloadURL  https://github.com/Bohaska/bac/raw/main/Better%20Airline%20Club.user.js
+// @updateURL    https://github.com/Bohaska/bac/raw/main/Better%20Airline%20Club.user.js
 // @grant        GM_info
 // ==/UserScript==
 
