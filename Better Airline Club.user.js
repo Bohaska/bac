@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         [BETA] BAC with H/T/D/T
 // @namespace    http://tampermonkey.net/
-// @version      2.1.2
+// @version      2.1.3
 // @description  Enhances airline-club.com and v2.airline-club.com airline management game (protip: Sign into your 2 accounts with one on each domain to avoid extra logout/login). Install this script with automatic updates by first installing TamperMonkey/ViolentMonkey/GreaseMonkey and installing it as a userscript.
 // @author       Maintained by Fly or die (BAC by Aphix/Torus @ https://gist.github.com/aphix/fdeeefbc4bef1ec580d72639bbc05f2d) (original "Cost Per PAX" portion by Alrianne @ https://github.com/wolfnether/Airline_Club_Mod/) (Service funding cost by Toast @ https://pastebin.com/9QrdnNKr) (With help from Gemini 2.0 and 2.5)
 // @match        https://*.airline-club.com/*
@@ -449,7 +449,8 @@ async function loadHistoryForLink(airlineId, linkId, cycleCount, link) {
     enableButton($("#linkDetails .button.viewLinkComposition"))
 
     plotHistory(linkHistory);
-
+    
+    $('#linkEventChart').data('linkConsumptions', linkHistory);
     return linkHistory;
 }
 
