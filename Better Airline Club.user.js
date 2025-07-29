@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         [BETA] BAC with H/T/D/T
 // @namespace    http://tampermonkey.net/
-// @version      2.1.1
+// @version      2.1.2
 // @description  Enhances airline-club.com and v2.airline-club.com airline management game (protip: Sign into your 2 accounts with one on each domain to avoid extra logout/login). Install this script with automatic updates by first installing TamperMonkey/ViolentMonkey/GreaseMonkey and installing it as a userscript.
-// @author       Maintained by Fly or die (BAC by Aphix/Torus @ https://gist.github.com/aphix/fdeeefbc4bef1ec580d72639bbc05f2d) (original "Cost Per PAX" portion by Alrianne @ https://github.com/wolfnether/Airline_Club_Mod/) (Service funding cost by Toast @ https://pastebin.com/9QrdnNKr) (With help from Gemini 2.0 and 2.5)
+// @author       Aphix/Torus (original "Cost Per PAX" portion by Alrianne @ https://github.com/wolfnether/Airline_Club_Mod/)
 // @match        https://*.airline-club.com/*
 // @icon         https://www.airline-club.com/favicon.ico
 // @downloadURL  https://github.com/Bohaska/bac/raw/main/Better%20Airline%20Club.user.js
@@ -18,16 +18,16 @@ var REMOVE_MOVING_BACKGROUND = true; // perf enhancement, less noisy -- !!! IF Y
 var SOLID_BACKGROUND_COLOR = `rgb(83, 85, 113)`; // only matters if REMOVE_MOVING_BACKGROUND is true
 
 // Default filter values for plane purchase table header:
-var DEFAULT_MIN_PLANES_IN_CIRCULATION_FILTER = 450; // Changes default minimum number of planes in circulation to remove from plane purchase table
-var DEFAULT_MIN_FLIGHT_RANGE_FILTER = 1000;
-var DEFAULT_RUNWAY_LENGTH_FILTER = 3000;
+var DEFAULT_MIN_PLANES_IN_CIRCULATION_FILTER = 0; // Changes default minimum number of planes in circulation to remove from plane purchase table
+var DEFAULT_MIN_FLIGHT_RANGE_FILTER = 0;
+var DEFAULT_RUNWAY_LENGTH_FILTER = 3600;
 var DEFAULT_MIN_CAPACITY_FILTER = 0;
 
 var MAIN_PANEL_WIDTH = '62%'; // Percent of screen for all the main (left-side) tables with lists (flight/airplane/etc)
 var SIDE_PANEL_WIDTH = '38%'; // Percent of screen for all the right-side details (usually linked with whatever is selected in the main/left panel, e.g. flight details)
 
 // Plugin code starts here and goes to the end...
-// Feel free to ping me on the Airline Club Discord @bohaska if you have any suggestions.
+// Feel free to leave a comment on the gist if you have any questions or requests: https://gist.github.com/aphix/fdeeefbc4bef1ec580d72639bbc05f2d
 
 function reportAjaxError(jqXHR, textStatus, errorThrown) {
     console.error(JSON.stringify(jqXHR));
@@ -1185,7 +1185,7 @@ function launch(){
 
         $('#linkDetails fieldset .switch').parent().html(`
             <div class="switch" style="float: right; width: 160px;margin-right: 16px;">
-                <input type="radio" class="switch-input" name="view" value="week" id="switchWeek" checked="">
+                <input type="radio" class="switch-input" name="view" value="week" id="switchWeek">
                 <label for="switchWeek" class="switch-label switch-label-off">Week</label>
                 <input type="radio" class="switch-input" name="view" value="month" id="switchMonth">
                 <label for="switchMonth" class="switch-label switch-label-on">Month</label>
@@ -1195,6 +1195,8 @@ function launch(){
                 <label for="switchYear" class="switch-label switch-label-on">Year</label>
                 <span class="switch-selection"></span>
             </div>`);
+        const selectedDuration = localStorage.getItem("linkChartCheckedDuration")
+        $(`#${selectedDuration !== null ? selectedDuration : "switchQuarter"}`).attr("checked", true)
 
         $('#linkDetails fieldset').attr('onchange','refreshLinkCharts($(this))')
 
@@ -1208,6 +1210,7 @@ function launch(){
 
     unsafeWindow.refreshLinkCharts = async function refreshLinkCharts(parentEl) {
         var _checkedElem = $('#linkDetails fieldset .switch input:checked')[0];
+        localStorage.setItem("linkChartCheckedDuration", _checkedElem.id)
 
         $('#linkDetails fieldset .switch input').each((index, childElem) => {
             const same = childElem === _checkedElem;
@@ -1597,7 +1600,7 @@ function launch(){
     // For "Link Planning / Edit Link" screen
     $("#airplaneModelDetails > div").before(`<select class="select-css" id="viewLinkModelSelect" onchange="linkUpdateModelInfo($(this).val())" style="margin: 10px auto; float: middle; display: none;"></select>`);
 
-
+    _updateChartOptionsIfNeeded();
     _updateLatestOilPriceInHeader();
 };
 
