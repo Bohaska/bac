@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      2.1.2
 // @description  Enhances airline-club.com and v2.airline-club.com airline management game (protip: Sign into your 2 accounts with one on each domain to avoid extra logout/login). Install this script with automatic updates by first installing TamperMonkey/ViolentMonkey/GreaseMonkey and installing it as a userscript.
-// @author       Aphix/Torus (original "Cost Per PAX" portion by Alrianne @ https://github.com/wolfnether/Airline_Club_Mod/)
+// @author       Maintained by Fly or die (BAC by Aphix/Torus @ https://gist.github.com/aphix/fdeeefbc4bef1ec580d72639bbc05f2d) (original "Cost Per PAX" portion by Alrianne @ https://github.com/wolfnether/Airline_Club_Mod/) (Service funding cost by Toast @ https://pastebin.com/9QrdnNKr) (With help from Gemini 2.0 and 2.5)
 // @match        https://*.airline-club.com/*
 // @icon         https://www.airline-club.com/favicon.ico
 // @downloadURL  https://github.com/Bohaska/bac/raw/main/Better%20Airline%20Club.user.js
@@ -27,7 +27,7 @@ var MAIN_PANEL_WIDTH = '62%'; // Percent of screen for all the main (left-side) 
 var SIDE_PANEL_WIDTH = '38%'; // Percent of screen for all the right-side details (usually linked with whatever is selected in the main/left panel, e.g. flight details)
 
 // Plugin code starts here and goes to the end...
-// Feel free to leave a comment on the gist if you have any questions or requests: https://gist.github.com/aphix/fdeeefbc4bef1ec580d72639bbc05f2d
+// Feel free to ping me on the Airline Club Discord @bohaska if you have any suggestions.
 
 function reportAjaxError(jqXHR, textStatus, errorThrown) {
     console.error(JSON.stringify(jqXHR));
