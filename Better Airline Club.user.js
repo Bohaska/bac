@@ -23,8 +23,8 @@ var DEFAULT_MIN_FLIGHT_RANGE_FILTER = 0;
 var DEFAULT_RUNWAY_LENGTH_FILTER = 3600;
 var DEFAULT_MIN_CAPACITY_FILTER = 0;
 
-var MAIN_PANEL_WIDTH = '58%'; // Percent of screen for all the main (left-side) tables with lists (flight/airplane/etc)
-var SIDE_PANEL_WIDTH = '42%'; // Percent of screen for all the right-side details (usually linked with whatever is selected in the main/left panel, e.g. flight details)
+var MAIN_PANEL_WIDTH = '62%'; // Percent of screen for all the main (left-side) tables with lists (flight/airplane/etc)
+var SIDE_PANEL_WIDTH = '38%'; // Percent of screen for all the right-side details (usually linked with whatever is selected in the main/left panel, e.g. flight details)
 
 // Plugin code starts here and goes to the end...
 // Feel free to ping me on the Airline Club Discord @bohaska if you have any suggestions.
