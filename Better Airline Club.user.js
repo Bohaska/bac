@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         [BETA] BAC with H/T/D/T
 // @namespace    http://tampermonkey.net/
-// @version      2.1.3
+// @version      2.1.4
 // @description  Enhances airline-club.com and v2.airline-club.com airline management game (protip: Sign into your 2 accounts with one on each domain to avoid extra logout/login). Install this script with automatic updates by first installing TamperMonkey/ViolentMonkey/GreaseMonkey and installing it as a userscript.
 // @author       Maintained by Fly or die (BAC by Aphix/Torus @ https://gist.github.com/aphix/fdeeefbc4bef1ec580d72639bbc05f2d) (original "Cost Per PAX" portion by Alrianne @ https://github.com/wolfnether/Airline_Club_Mod/) (Service funding cost by Toast @ https://pastebin.com/9QrdnNKr) (With help from Gemini 2.0 and 2.5)
 // @match        https://*.airline-club.com/*
@@ -23,11 +23,12 @@ var DEFAULT_MIN_FLIGHT_RANGE_FILTER = 0;
 var DEFAULT_RUNWAY_LENGTH_FILTER = 3600;
 var DEFAULT_MIN_CAPACITY_FILTER = 0;
 
-var MAIN_PANEL_WIDTH = '62%'; // Percent of screen for all the main (left-side) tables with lists (flight/airplane/etc)
-var SIDE_PANEL_WIDTH = '38%'; // Percent of screen for all the right-side details (usually linked with whatever is selected in the main/left panel, e.g. flight details)
+var MAIN_PANEL_WIDTH = '58%'; // Percent of screen for all the main (left-side) tables with lists (flight/airplane/etc)
+var SIDE_PANEL_WIDTH = '42%'; // Percent of screen for all the right-side details (usually linked with whatever is selected in the main/left panel, e.g. flight details)
 
 // Plugin code starts here and goes to the end...
 // Feel free to ping me on the Airline Club Discord @bohaska if you have any suggestions.
+// Note from Fly or die: I've released v2 of this mod. Thanks continentalysky for the commission!
 
 function reportAjaxError(jqXHR, textStatus, errorThrown) {
     console.error(JSON.stringify(jqXHR));
@@ -449,7 +450,7 @@ async function loadHistoryForLink(airlineId, linkId, cycleCount, link) {
     enableButton($("#linkDetails .button.viewLinkComposition"))
 
     plotHistory(linkHistory);
-    
+
     $('#linkEventChart').data('linkConsumptions', linkHistory);
     return linkHistory;
 }
@@ -650,9 +651,9 @@ unsafeWindow.loadLink = async function loadLink(airlineId, linkId) {
         selectedModelId = assignedModelId
     }
 
-    loadAirplaneModels();
-    const fromAirport = await _request("airports/" + link.fromAirportId);
-    const toAirport = await _request("airports/" + link.toAirportId);
+    if (Object.values(loadedModelsById).length == 0) loadAirplaneModels();
+    const fromAirport = airports.find(a => a.id == link.fromAirportId)
+    const toAirport = airports.find(a => a.id == link.toAirportId)
     const minRunway = Math.min(fromAirport.runwayLength, toAirport.runwayLength)
 
     link.fromAirport = fromAirport
@@ -1914,23 +1915,8 @@ unsafeWindow.updatePlanLinkInfo = function(linkInfo){
         }
     }
 
-    if (idFrom != linkInfo.fromAirportId){
-        idFrom = linkInfo.fromAirportId
-        $.ajax({
-            url:"airports/" + linkInfo.fromAirportId,
-            async : false,
-            success: function(result){airportFrom = result},
-        });
-    }
-
-    if (idTo != linkInfo.toAirportId){
-        idTo = linkInfo.toAirportId
-        $.ajax({
-            url:"airports/" + linkInfo.toAirportId,
-            async : false,
-            success: function(result){airportTo = result},
-        });
-    }
+    airportFrom = airports.find(a => a.id == linkInfo.fromAirportId)
+    airportTo = airports.find(a => a.id == linkInfo.toAirportId)
 
     _updatePlanLinkInfo(linkInfo);
 }
@@ -2199,7 +2185,7 @@ unsafeWindow.researchFlight = async function researchFlight(fromAirportId, toAir
 
         const minRunway = Math.min(fromAirport.runwayLength, toAirport.runwayLength);
         const distance = result.distance;
-        loadAirplaneModels();
+        if (Object.values(loadedModelsById).length == 0) loadAirplaneModels();
 
         var arrayModels = Object.values(loadedModelsById).map(model => ({ ...model, used: usedModels.includes(model.id) }));
         arrayModels = sortPreserveOrder(arrayModels, "used", false);
