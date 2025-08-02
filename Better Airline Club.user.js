@@ -293,7 +293,7 @@ async function loadCompetitionForLink(airlineId, link) {
     document.getElementById("linkCompetitons").style.display = '';
 
     assignAirlineColors(linkConsumptions, "airlineId")
-    plotPie(linkConsumptions, null, document.getElementById("linkCompetitionsPie"), "airlineName", "soldSeats")
+    plotPie(linkConsumptions, null, $("#linkCompetitionsPie"), "airlineName", "soldSeats")
 
     return linkConsumptions;
 }
@@ -1065,7 +1065,7 @@ function launch(){
         links.forEach((link) => _populateDerivedFieldsOnLink(link, fundingProjection));
 
         var selectedSortHeader = document.querySelector('#linksTableSortHeader .cell.selected');
-        updateLinksTable($('#linksTableSortHeader .cell.selected').data('sort-property'), $('#linksTableSortHeader .cell.selected').data('sort-order'))
+        updateLinksTable(selectedSortHeader.dataset.sortProperty, selectedSortHeader.dataset.sortOrder);
     }
 
     var colorKeyMaps = {};
@@ -2183,15 +2183,15 @@ unsafeWindow.researchFlight = async function researchFlight(fromAirportId, toAir
         $("#searchCanvas").data(result); // Keep .data()
         var fromAirport = result.fromAirport;
         var toAirport = result.toAirport;
-        loadAirportImage(fromAirport.id, document.querySelector('#researchSearchResult img.fromAirport'));
-        loadAirportImage(toAirport.id, document.querySelector('#researchSearchResult img.toAirport'));
+        loadAirportImage(fromAirport.id, $('#researchSearchResult img.fromAirport'));
+        loadAirportImage(toAirport.id, $('#researchSearchResult img.toAirport'));
         document.querySelector("#researchSearchResult .fromAirportText").textContent = result.fromAirportText;
         document.querySelector("#researchSearchResult .fromAirportText").setAttribute("onclick", `showAirportDetails(${fromAirport.id})`);
         document.querySelector("#researchSearchResult .fromAirport .population").textContent = commaSeparateNumber(result.fromAirport.population);
         document.querySelector("#researchSearchResult .fromAirport .incomeLevel").textContent = result.fromAirport.incomeLevel;
         document.querySelector("#researchSearchResult .toAirportText").textContent = result.toAirportText;
         document.querySelector("#researchSearchResult .toAirportText").setAttribute("onclick", `showAirportDetails(${toAirport.id})`);
-        populateNavigation(document.getElementById("researchSearchResult"));
+        populateNavigation($("#researchSearchResult"));
         document.querySelector("#researchSearchResult .toAirport .population").textContent = commaSeparateNumber(result.toAirport.population);
         document.querySelector("#researchSearchResult .toAirport .incomeLevel").textContent = result.toAirport.incomeLevel;
         document.querySelector("#researchSearchResult .relationship").innerHTML = getCountryFlagImg(result.fromAirport.countryCode) + "&nbsp;vs&nbsp;" + getCountryFlagImg(result.toAirport.countryCode) + getCountryRelationshipDescription(result.mutualRelationship);
@@ -2225,7 +2225,7 @@ unsafeWindow.researchFlight = async function researchFlight(fromAirportId, toAir
             document.querySelector('#researchSearchResult .table.links').insertAdjacentHTML('beforeend', "<div class='table-row'><div class='cell'>-</div><div class='cell'>-</div><div class='cell'>-</div><div class='cell'>-</div><div class='cell'>-</div></div>");
         }
         assignAirlineColors(result.consumptions, "airlineId");
-        plotPie(result.consumptions, null, document.querySelector("#researchSearchResult .linksPie"), "airlineName", "soldSeats");
+        plotPie(result.consumptions, null, $("#researchSearchResult .linksPie"), "airlineName", "soldSeats");
         document.getElementById('researchSearchResult').style.display = '';
 
         const minRunway = Math.min(fromAirport.runwayLength, toAirport.runwayLength);
