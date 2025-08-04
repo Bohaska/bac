@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         [BETA] BAC with H/T/D/T
 // @namespace    http://tampermonkey.net/
-// @version      2.1.4
+// @version      2.1.5
 // @description  Enhances airline-club.com and v2.airline-club.com airline management game (protip: Sign into your 2 accounts with one on each domain to avoid extra logout/login). Install this script with automatic updates by first installing TamperMonkey/ViolentMonkey/GreaseMonkey and installing it as a userscript.
 // @author       Maintained by Fly or die (BAC by Aphix/Torus @ https://gist.github.com/aphix/fdeeefbc4bef1ec580d72639bbc05f2d) (original "Cost Per PAX" portion by Alrianne @ https://github.com/wolfnether/Airline_Club_Mod/) (Service funding cost by Toast @ https://pastebin.com/9QrdnNKr) (With help from Gemini 2.0 and 2.5)
 // @match        https://*.airline-club.com/*
@@ -507,6 +507,8 @@ async function loadLinkSurvey(airlineId, link) {
     var destinationAirportPax = 0;
     var homeTransitPax = 0;
     var destinationTransitPax = 0;
+    var departurePax = 0;
+    var arrivalPax = 0;
     var cheapPax = 0;
     var swiftPax = 0;
     var loyalistPax = 0;
@@ -518,17 +520,11 @@ async function loadLinkSurvey(airlineId, link) {
     var cheapNewLoyalists = 0;
     var swiftNewLoyalists = 0;
     var loyalNewLoyalists = 0;
-    for (var i = 0; i < survey.homeAirports.length; i++) {
-        if (survey.homeAirports[i].airport === `${link.fromAirportCity}(${link.fromAirportCode})`) {
-            homeAirportPax = survey.homeAirports[i].passengerCount;
-        } else {
-        if (survey.homeAirports[i].airport === `${link.toAirportCity}(${link.toAirportCode})`) {
-            destinationAirportPax = survey.homeAirports[i].passengerCount;
-        }
-        }
-    }
     for (i = 0; i < passengerMap.relatedLinks.length; i++) {
         if (passengerMap.relatedLinks[i][0].linkId === link.id) {
+            for (var k = 0; k < passengerMap.relatedLinks[i].length; k++) {
+                departurePax += passengerMap.relatedLinks[i][k].passenger
+            }
             try {
                 for (var j = 0; j < passengerMap.relatedLinks[i-1].length; j++) {
                     homeTransitPax += passengerMap.relatedLinks[i-1][j].passenger
@@ -540,6 +536,9 @@ async function loadLinkSurvey(airlineId, link) {
     }
     for (i = 0; i < passengerMap.invertedRelatedLinks.length; i++) {
         if (passengerMap.invertedRelatedLinks[i][0].linkId === link.id) {
+            for (var k = 0; k < passengerMap.invertedRelatedLinks[i].length; k++) {
+                arrivalPax += passengerMap.invertedRelatedLinks[i][k].passenger
+            }
             try {
                 for (j = 0; j < passengerMap.invertedRelatedLinks[i-1].length; j++) {
                     destinationTransitPax += passengerMap.invertedRelatedLinks[i-1][j].passenger
@@ -549,6 +548,8 @@ async function loadLinkSurvey(airlineId, link) {
             }
         }
     }
+    homeAirportPax = departurePax - homeTransitPax
+    destinationAirportPax = arrivalPax - destinationTransitPax
     for (i = 0; i < survey.preferenceType.length; i++) {
         if (survey.preferenceType[i].title === "Budget") {
             budgetPax += survey.preferenceType[i].passengerCount;
