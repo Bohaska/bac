@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         [BETA] BAC with H/T/D/T
 // @namespace    http://tampermonkey.net/
-// @version      2.1.5
+// @version      2.1.6
 // @description  Enhances airline-club.com and v2.airline-club.com airline management game (protip: Sign into your 2 accounts with one on each domain to avoid extra logout/login). Install this script with automatic updates by first installing TamperMonkey/ViolentMonkey/GreaseMonkey and installing it as a userscript.
 // @author       Maintained by Fly or die (BAC by Aphix/Torus @ https://gist.github.com/aphix/fdeeefbc4bef1ec580d72639bbc05f2d) (original "Cost Per PAX" portion by Alrianne @ https://github.com/wolfnether/Airline_Club_Mod/) (Service funding cost by Toast @ https://pastebin.com/9QrdnNKr) (With help from Gemini 2.0 and 2.5)
 // @match        https://*.airline-club.com/*
@@ -1155,30 +1155,150 @@ function launch(){
         const { link, linkCompetition, linkHistory } = await linkDetailsPromise; // link details loaded if needed for something later
     }
 
-    async function _getOvertimeAndStaffInfoForLink(link) {
-        const airplaneFrequencies = {};
+    // Data and logic replicated from the Scala backend code
+    const FlightType = {
+        SHORT_HAUL_DOMESTIC: "Short-haul Domestic",
+        MEDIUM_HAUL_DOMESTIC: "Medium-haul Domestic",
+        LONG_HAUL_DOMESTIC: "Long-haul Domestic",
+        SHORT_HAUL_INTERNATIONAL: "Short-haul International",
+        MEDIUM_HAUL_INTERNATIONAL: "Medium-haul International",
+        LONG_HAUL_INTERNATIONAL: "Long-haul International",
+        SHORT_HAUL_INTERCONTINENTAL: "Short-haul Intercontinental",
+        MEDIUM_HAUL_INTERCONTINENTAL: "Medium-haul Intercontinental",
+        LONG_HAUL_INTERCONTINENTAL: "Long-haul Intercontinental",
+        ULTRA_LONG_HAUL_INTERCONTINENTAL: "Ultra long-haul Intercontinental",
+    };
 
-        for (const {airplane, frequency} of link.assignedAirplanes) {
-            airplaneFrequencies[airplane.id] = frequency;
+    const FlightCategory = {
+        DOMESTIC: "DOMESTIC",
+        INTERNATIONAL: "INTERNATIONAL",
+        INTERCONTINENTAL: "INTERCONTINENTAL"
+    };
+
+    const getFlightCategory = (flightType) => {
+        if (flightType.includes("Domestic")) {
+            return FlightCategory.DOMESTIC;
+        } else if (flightType.includes("Intercontinental")) {
+            return FlightCategory.INTERCONTINENTAL;
+        } else if (flightType.includes("International")) {
+            return FlightCategory.INTERNATIONAL;
+        }
+        return undefined; // Should not happen with valid data
+    };
+
+
+    const staffScheme = (() => {
+        const basicLookup = {
+            SHORT_HAUL_DOMESTIC: 8,
+            MEDIUM_HAUL_DOMESTIC: 10,
+            LONG_HAUL_DOMESTIC: 12,
+            SHORT_HAUL_INTERNATIONAL: 10,
+            MEDIUM_HAUL_INTERNATIONAL: 15,
+            LONG_HAUL_INTERNATIONAL: 20,
+            SHORT_HAUL_INTERCONTINENTAL: 15,
+            MEDIUM_HAUL_INTERCONTINENTAL: 25,
+            LONG_HAUL_INTERCONTINENTAL: 30,
+            ULTRA_LONG_HAUL_INTERCONTINENTAL: 30,
+        };
+
+        const multiplyFactorLookup = {
+            SHORT_HAUL_DOMESTIC: 2,
+            MEDIUM_HAUL_DOMESTIC: 2,
+            LONG_HAUL_DOMESTIC: 2,
+            SHORT_HAUL_INTERNATIONAL: 2,
+            MEDIUM_HAUL_INTERNATIONAL: 2,
+            LONG_HAUL_INTERNATIONAL: 2,
+            SHORT_HAUL_INTERCONTINENTAL: 3,
+            MEDIUM_HAUL_INTERCONTINENTAL: 3,
+            LONG_HAUL_INTERCONTINENTAL: 4,
+            ULTRA_LONG_HAUL_INTERCONTINENTAL: 4,
+        };
+
+        const lookup = {};
+        for (const key in FlightType) {
+            const flightType = key;
+            const basic = basicLookup[flightType];
+            const multiplyFactor = multiplyFactorLookup[flightType];
+            const staffPerFrequency = (2.0 / 5) * multiplyFactor;
+            const staffPer1000Pax = 1 * multiplyFactor;
+            lookup[flightType] = {
+                basic: basic,
+                perFrequencyStaff: staffPerFrequency,
+                per1000PaxStaff: staffPer1000Pax,
+            };
+        }
+        return lookup;
+    })();
+
+    /**
+     * Calculates the link's staff info based on the formula directly, without an API call.
+     * This function replicates the server-side logic found in getOfficeStaffBreakdown and applies hub specialization modifiers.
+     */
+    async function _getOvertimeAndStaffInfoForLink(link) {
+        // Convert the human-readable flightType from the link object to the internal enum-style key.
+        // e.g., "Short-haul International" -> "SHORT_HAUL_INTERNATIONAL"
+        const flightTypeKey = link.flightType.toUpperCase().replace(/-/g, "_").replace(/ /g, "_");
+
+        // --- Calculate the airline base modifier ---
+        let airlineBaseModifier = 1.0;
+        const fromAirportBase = activeAirline.baseAirports.find(base => base.airportId === link.fromAirportId);
+
+        if (fromAirportBase && fromAirportBase.specializations) {
+            const flightCategory = getFlightCategory(link.flightType);
+            const isDomestic = flightCategory === FlightCategory.DOMESTIC;
+
+            const hasDomesticHub = fromAirportBase.specializations.some(spec => spec.id === 'DOMESTIC_HUB');
+            const hasInternationalHub = fromAirportBase.specializations.some(spec => spec.id === 'INTERNATIONAL_HUB');
+
+            if (hasDomesticHub) {
+                // "Reduce staff required for domestic flight by 20%", "Increase staff required for international flight by 20%"
+                airlineBaseModifier = isDomestic ? 0.8 : 1.2;
+            } else if (hasInternationalHub) {
+                airlineBaseModifier = isDomestic ? 1.2 : 0.8;
+            }
         }
 
-        // See "getLinkStaffingInfo" in main code to understand where this comes from:
-        const result = await _request(`airlines/${activeAirline.id}/link-overtime-compensation`, 'POST', {
-            fromAirportId : link.fromAirportId,
-            toAirportId : link.toAirportId,
-            airplanes : airplaneFrequencies,
-            airlineId: activeAirline.id,
-            price: {
-                economy: link.price.economy,
-                business: link.price.business,
-                first: link.price.first,
-            },
-            model: link.modelId,
-            rawQuality: link.rawQuality * 20,
-            assignedDelegates: 0,
-        })
 
-        return result;
+        let staffBreakdown;
+
+        if (link.frequency === 0) {
+            staffBreakdown = {
+                basic: 0,
+                frequency: 0,
+                capacity: 0,
+                modifier: airlineBaseModifier,
+                total: 0,
+            };
+        } else {
+            const scheme = staffScheme[flightTypeKey];
+            if (!scheme) {
+                console.error("Could not find staff scheme for flight type:", flightTypeKey);
+                return {
+                    staffBreakdown: { basic: 0, frequency: 0, capacity: 0, modifier: 0, total: 0 }
+                };
+            }
+
+            const basicStaff = scheme.basic;
+            const frequencyStaff = scheme.perFrequencyStaff * link.frequency;
+            const capacityStaff = (scheme.per1000PaxStaff * link.capacity.total) / 1000;
+
+            const total = Math.trunc(
+                (basicStaff + frequencyStaff + capacityStaff) * airlineBaseModifier
+            );
+
+            staffBreakdown = {
+                basic: basicStaff,
+                frequency: frequencyStaff,
+                capacity: capacityStaff,
+                modifier: airlineBaseModifier,
+                total: total,
+            };
+        }
+        console.log(staffBreakdown)
+
+        return {
+            staffBreakdown: staffBreakdown
+        };
     }
 
     function _updateChartOptionsIfNeeded() {
