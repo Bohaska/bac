@@ -2259,77 +2259,226 @@ $("#airplaneModelDetails #speed").parent().after(`
     <div class="label">&#8205;</div>
 </div>`);
 
-unsafeWindow.researchFlight = async function researchFlight(fromAirportId, toAirportId) {
-    if (fromAirportId && toAirportId) {
-        $('body .loadingSpinner').show();
-        const result = await _request("research-link/" + fromAirportId + "/" + toAirportId).finally(() => $('body .loadingSpinner').hide());
+(function() {
+    'use strict';
 
-        $("#searchCanvas").data(result);
-        var fromAirport = result.fromAirport;
-        var toAirport = result.toAirport;
-        loadAirportImage(fromAirport.id, $('#researchSearchResult img.fromAirport'));
-        loadAirportImage(toAirport.id, $('#researchSearchResult img.toAirport'));
-        $("#researchSearchResult .fromAirportText").text(result.fromAirportText).attr("onclick", `showAirportDetails(${fromAirport.id})`);
-        $("#researchSearchResult .fromAirport .population").text(commaSeparateNumber(result.fromAirport.population));
-        $("#researchSearchResult .fromAirport .incomeLevel").text(result.fromAirport.incomeLevel);
-        $("#researchSearchResult .toAirportText").text(result.toAirportText).attr("onclick", `showAirportDetails(${toAirport.id})`);
-        populateNavigation($("#researchSearchResult"));
-        $("#researchSearchResult .toAirport .population").text(commaSeparateNumber(result.toAirport.population));
-        $("#researchSearchResult .toAirport .incomeLevel").text(result.toAirport.incomeLevel);
-        $("#researchSearchResult .relationship").html(getCountryFlagImg(result.fromAirport.countryCode) + "&nbsp;vs&nbsp;" + getCountryFlagImg(result.toAirport.countryCode) + getCountryRelationshipDescription(result.mutualRelationship));
-        $("#researchSearchResult .distance").text(result.distance);
-        $("#researchSearchResult .flightType").text(result.flightType);
-        $("#researchSearchResult .demand").text(toLinkClassValueString(result.directDemand));
+    // --- GLOBAL CONSTANTS ---
+    const modifierBrackets = [
+        [200, 0.25],
+        [800, 0.125],
+        [1000, 0.1],
+        [Number.MAX_SAFE_INTEGER, 0.05]
+    ];
 
-        var $breakdown = $("#researchSearchResult .directDemandBreakdown");
-        $breakdown.find(".fromAirport .airportLabel").empty().append(getAirportSpan(fromAirport));
-        $breakdown.find(".fromAirport .businessDemand").text(toLinkClassValueString(result.fromAirportBusinessDemand));
-        $breakdown.find(".fromAirport .touristDemand").text(toLinkClassValueString(result.fromAirportTouristDemand));
-        $breakdown.find(".toAirport .airportLabel").empty().append(getAirportSpan(toAirport));
-        $breakdown.find(".toAirport .businessDemand").text(toLinkClassValueString(result.toAirportBusinessDemand));
-        $breakdown.find(".toAirport .touristDemand").text(toLinkClassValueString(result.toAirportTouristDemand));
+    const FlightType = Object.freeze({
+        DOMESTIC: 'Domestic',
+        SHORT_HAUL_INTERNATIONAL: 'Short-haul International',
+        MEDIUM_HAUL_INTERNATIONAL: 'Medium-haul International',
+        LONG_HAUL_INTERNATIONAL: 'Long-haul International',
+        SHORT_HAUL_INTERCONTINENTAL: 'Short-haul Intercontinental',
+        MEDIUM_HAUL_INTERCONTINENTAL: 'Medium-haul Intercontinental',
+        LONG_HAUL_INTERCONTINENTAL: 'Long-haul Intercontinental',
+        ULTRA_LONG_HAUL_INTERCONTINENTAL: 'Ultra Long-Haul Intercontinental',
+    });
 
-        $("#researchSearchResult .table.links .table-row").remove();
-        const usedModels = [];
-        $.each(result.links, function(index, link) {
-            var $row = $("<div class='table-row'><div class='cell'>" + link.airlineName + "</div><div class='cell'>" + link.modelName + "</div><div class='cell'>" + toLinkClassValueString(link.price, "$") + "</div><div class='cell'>" + toLinkClassValueString(link.capacity) + "</div><div class='cell'>" + link.computedQuality + "</div><div class='cell'>" + link.frequency + "</div></div>");
-            $('#researchSearchResult .table.links').append($row);
-            usedModels.push(link.modelId);
-        });
+    const INTERNATIONAL_PRICE_MULTIPLIER = 1.05;
+    const INTERCONTINENTAL_PRICE_MULTIPLIER = 1.1;
 
-        if (result.links.length == 0) {
-            $('#researchSearchResult .table.links').append("<div class='table-row'><div class='cell'>-</div><div class='cell'>-</div><div class='cell'>-</div><div class='cell'>-</div><div class='cell'>-</div></div>");
-        }
-        assignAirlineColors(result.consumptions, "airlineId");
-        plotPie(result.consumptions, null, $("#researchSearchResult .linksPie"), "airlineName", "soldSeats");
-        $('#researchSearchResult').show();
+    const LinkClass = Object.freeze({
+        ECONOMY: { priceMultiplier: 1 },
+        BUSINESS: { priceMultiplier: 3 },
+        FIRST: { priceMultiplier: 9 }
+    });
 
-        const minRunway = Math.min(fromAirport.runwayLength, toAirport.runwayLength);
-        const distance = result.distance;
-        if (Object.values(loadedModelsById).length == 0) loadAirplaneModels();
+    /**
+     * Computes the standard price for a flight link in JavaScript.
+     * This is a direct translation of the Scala `computeStandardPrice` function.
+     * @param {number} distance - The flight distance.
+     * @param {string} flightTypeString - The raw string representation of the flight type from the API.
+     * @param {string} linkClassKey - The key for the LinkClass (e.g., 'ECONOMY').
+     * @returns {number} The calculated standard price (integer).
+     */
+    function computeStandardPriceJS(distance, flightTypeString, linkClassKey) {
+        let remainDistance = distance;
+        let price = 100.0; 
 
-        var arrayModels = Object.values(loadedModelsById).map(model => ({ ...model, used: usedModels.includes(model.id) }));
-        arrayModels = sortPreserveOrder(arrayModels, "used", false);
-
-        var $select = $("#researchFlightModelSelect").empty();
-        var selectedModelId = result.links.length > 0 ? result.links[0].modelId : null;
-        $.each(arrayModels, function(id, model) {
-            if (model.range >= distance && model.runwayRequirement <= minRunway) {
-                if (selectedModelId === null) selectedModelId = model.id;
-                let flightDuration = calcFlightTime(model, distance);
-                let maxFlightMinutes = 4 * 24 * 60;
-                let frequency = Math.floor(maxFlightMinutes / ((flightDuration + model.turnaroundTime) * 2));
-                var $option = $("<option></option>").attr("value", model.id).text(model.name + " (" + frequency + ")");
-                if(model.used) $option.addClass("highlight-text");
-                $select.append($option);
+        let currentFlightTypeKey = null;
+        for (const key in FlightType) {
+            if (FlightType[key] === flightTypeString) {
+                currentFlightTypeKey = key;
+                break;
             }
-        });
-        if (selectedModelId) {
-            $select.val(selectedModelId);
-            researchUpdateModelInfo(selectedModelId);
+        }
+
+        if (!currentFlightTypeKey) {
+            console.error(`computeStandardPriceJS: Unknown flightTypeString: ${flightTypeString}. This might lead to incorrect price calculation.`);
+        }
+
+        for (const priceBracket of modifierBrackets) {
+            if (remainDistance <= 0) {
+                break;
+            }
+            if (priceBracket[0] >= remainDistance) {
+                price += remainDistance * priceBracket[1];
+            } else {
+                price += priceBracket[0] * priceBracket[1];
+            }
+            remainDistance -= priceBracket[0];
+        }
+
+        let priceAfterFlightType = price;
+        switch (currentFlightTypeKey) {
+            case 'SHORT_HAUL_INTERNATIONAL':
+            case 'MEDIUM_HAUL_INTERNATIONAL':
+            case 'LONG_HAUL_INTERNATIONAL':
+                priceAfterFlightType = price * INTERNATIONAL_PRICE_MULTIPLIER;
+                break;
+            case 'SHORT_HAUL_INTERCONTINENTAL':
+            case 'MEDIUM_HAUL_INTERCONTINENTAL':
+            case 'LONG_HAUL_INTERCONTINENTAL':
+            case 'ULTRA_LONG_HAUL_INTERCONTINENTAL':
+                priceAfterFlightType = price * INTERCONTINENTAL_PRICE_MULTIPLIER;
+                break;
+            default:
+                break;
+        }
+
+        const linkClassObj = LinkClass[linkClassKey];
+        if (linkClassObj && typeof linkClassObj.priceMultiplier === 'number') {
+            price = priceAfterFlightType * linkClassObj.priceMultiplier;
+        } else {
+            console.error(`computeStandardPriceJS: Invalid linkClassKey '${linkClassKey}' or missing priceMultiplier.`);
+            price = priceAfterFlightType;
+        }
+
+        let finalPrice = Math.floor(price * 1.5);
+
+        return finalPrice;
+    }
+
+    unsafeWindow.researchFlight = async function researchFlight(fromAirportId, toAirportId) {
+        if (fromAirportId && toAirportId) {
+            $('body .loadingSpinner').show();
+            const result = await _request("research-link/" + fromAirportId + "/" + toAirportId).finally(() => $('body .loadingSpinner').hide());
+
+            $("#searchCanvas").data(result);
+            var fromAirport = result.fromAirport;
+            var toAirport = result.toAirport;
+            loadAirportImage(fromAirport.id, $('#researchSearchResult img.fromAirport'));
+            loadAirportImage(toAirport.id, $('#researchSearchResult img.toAirport'));
+            $("#researchSearchResult .fromAirportText").text(result.fromAirportText).attr("onclick", `showAirportDetails(${fromAirport.id})`);
+            $("#researchSearchResult .fromAirport .population").text(commaSeparateNumber(result.fromAirport.population));
+            $("#researchSearchResult .fromAirport .incomeLevel").text(result.fromAirport.incomeLevel);
+            $("#researchSearchResult .toAirportText").text(result.toAirportText).attr("onclick", `showAirportDetails(${toAirport.id})`);
+            populateNavigation($("#researchSearchResult"));
+            $("#researchSearchResult .toAirport .population").text(commaSeparateNumber(result.toAirport.population));
+            $("#researchSearchResult .toAirport .incomeLevel").text(result.toAirport.incomeLevel);
+            $("#researchSearchResult .relationship").html(getCountryFlagImg(result.fromAirport.countryCode) + "&nbsp;vs&nbsp;" + getCountryFlagImg(result.toAirport.countryCode) + getCountryRelationshipDescription(result.mutualRelationship));
+            $("#researchSearchResult .distance").text(result.distance);
+            $("#researchSearchResult .flightType").text(result.flightType);
+            $("#researchSearchResult .demand").text(toLinkClassValueString(result.directDemand));
+
+            var $breakdown = $("#researchSearchResult .directDemandBreakdown");
+            $breakdown.find(".fromAirport .airportLabel").empty().append(getAirportSpan(fromAirport));
+            $breakdown.find(".fromAirport .businessDemand").text(toLinkClassValueString(result.fromAirportBusinessDemand));
+            $breakdown.find(".fromAirport .touristDemand").text(toLinkClassValueString(result.fromAirportTouristDemand));
+            $breakdown.find(".toAirport .airportLabel").empty().append(getAirportSpan(toAirport));
+            $breakdown.find(".toAirport .businessDemand").text(toLinkClassValueString(result.toAirportBusinessDemand));
+            $breakdown.find(".toAirport .touristDemand").text(toLinkClassValueString(result.toAirportTouristDemand));
+
+            $("#researchSearchResult .table.links").empty();
+            const $headerRow = $(`
+                <div class="table-row table-header-row">
+                    <div class="cell">Airline</div>
+                    <div class="cell">Aircraft</div>
+                    <div class="cell">Price</div>
+                    <div class="cell">Capacity</div>
+                    <div class="cell">Quality</div>
+                    <div class="cell">Freq.</div>
+                </div>
+            `);
+            $('#researchSearchResult .table.links').append($headerRow);
+
+            if (Object.values(loadedModelsById).length == 0) {
+                await loadAirplaneModels();
+            }
+
+            const usedModels = [];
+
+            $.each(result.links, function(index, link) {
+                const model = loadedModelsById[link.modelId];
+
+                const defaultPriceEconomy = computeStandardPriceJS(result.distance, result.flightType, 'ECONOMY');
+                const defaultPriceBusiness = computeStandardPriceJS(result.distance, result.flightType, 'BUSINESS');
+                const defaultPriceFirst = computeStandardPriceJS(result.distance, result.flightType, 'FIRST');
+
+                let displayedPriceString = toLinkClassValueString(link.price, "$");
+                let pricesArray = displayedPriceString
+                                    .replace(/\$/g, '')
+                                    .split(' / ')
+                                    .map(p => parseFloat(p.trim()));
+
+                let actualPriceEconomy = pricesArray[0];
+                let actualPriceBusiness = pricesArray[1];
+                let actualPriceFirst = pricesArray[2];
+
+                let percentageString = "";
+                if (pricesArray.length === 3 && actualPriceEconomy !== null && actualPriceBusiness !== null && actualPriceFirst !== null &&
+                    defaultPriceEconomy > 0 && defaultPriceBusiness > 0 && defaultPriceFirst > 0) {
+
+                    const percEconomy = ((actualPriceEconomy / defaultPriceEconomy) * 100).toFixed(0) + '%';
+                    const percBusiness = ((actualPriceBusiness / defaultPriceBusiness) * 100).toFixed(0) + '%';
+                    const percFirst = ((actualPriceFirst / defaultPriceFirst) * 100).toFixed(0) + '%';
+                    percentageString = `<br><span class='price-percentage'>${percEconomy} / ${percBusiness} / ${percFirst}</span>`;
+                } else {
+                    percentageString = `<br><span class='price-percentage'>N/A</span>`;
+                }
+
+                var $row = $("<div class='table-row'>" +
+                    "<div class='cell'>" + link.airlineName + "</div>" +
+                    "<div class='cell'>" + link.modelName + "</div>" +
+                    "<div class='cell'>" + displayedPriceString + percentageString + "</div>" +
+                    "<div class='cell'>" + toLinkClassValueString(link.capacity) + "</div>" +
+                    "<div class='cell'>" + link.computedQuality + "</div>" +
+                    "<div class='cell'>" + link.frequency + "</div>" +
+                    "</div>");
+                $('#researchSearchResult .table.links').append($row);
+                usedModels.push(link.modelId);
+            });
+
+            if (result.links.length == 0) {
+                $('#researchSearchResult .table.links').append("<div class='table-row'><div class='cell'>-</div><div class='cell'>-</div><div class='cell'>-</div><div class='cell'>-</div><div class='cell'>-</div><div class='cell'>-</div></div>");
+            }
+            assignAirlineColors(result.consumptions, "airlineId");
+            plotPie(result.consumptions, null, $("#researchSearchResult .linksPie"), "airlineName", "soldSeats");
+            $('#researchSearchResult').show();
+
+            const minRunway = Math.min(fromAirport.runwayLength, toAirport.runwayLength);
+            const distance = result.distance;
+
+            var arrayModels = Object.values(loadedModelsById).map(model => ({ ...model, used: usedModels.includes(model.id) }));
+            arrayModels = sortPreserveOrder(arrayModels, "used", false);
+
+            var $select = $("#researchFlightModelSelect").empty();
+            var selectedModelId = result.links.length > 0 ? result.links[0].modelId : null;
+            $.each(arrayModels, function(id, model) {
+                if (model.range >= distance && model.runwayRequirement <= minRunway) {
+                    if (selectedModelId === null) selectedModelId = model.id;
+                    let flightDuration = calcFlightTime(model, distance);
+                    let maxFlightMinutes = 4 * 24 * 60;
+                    let frequency = Math.floor(maxFlightMinutes / ((flightDuration + model.turnaroundTime) * 2));
+                    var $option = $("<option></option>").attr("value", model.id).text(model.name + " (" + frequency + ")");
+                    if(model.used) $option.addClass("highlight-text");
+                    $select.append($option);
+                }
+            });
+            if (selectedModelId) {
+                $select.val(selectedModelId);
+                researchUpdateModelInfo(selectedModelId);
+            }
         }
     }
-}
+})();
 
 function _genericUpdateModelInfo(modelId, routeInfo, containerSelector, serviceLevel) {
     let model = loadedModelsById[modelId];
