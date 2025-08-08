@@ -385,7 +385,15 @@ async function loadHistoryForLink(airlineId, linkId, cycleCount, link) {
 
     if (!$("#linkSqCost").length) {
         $("#linkServiceSupplies").parent().after(`<div class="table-row">
-            <div class="label"><h5>Service Funding:</h5></div>
+            <div class="label">
+              <h5>Service Funding:
+                <div class="tooltip">
+                  <img src="/assets/images/icons/information.png">
+                  <span class="tooltiptext below" style="white-space: nowrap;">The SQ funding cost of this route.<br>Corresponds to service funding shown in the office tab.<br>Profits look lower because of this
+                  <br></span>
+                </div>
+              </h5>
+            </div>
             <div class="value" id="linkSqCost"></div>
         </div>`);
     }
@@ -2300,7 +2308,7 @@ $("#airplaneModelDetails #speed").parent().after(`
      */
     function computeStandardPriceJS(distance, flightTypeString, linkClassKey) {
         let remainDistance = distance;
-        let price = 100.0; 
+        let price = 100.0;
 
         let currentFlightTypeKey = null;
         for (const key in FlightType) {
@@ -2429,9 +2437,9 @@ $("#airplaneModelDetails #speed").parent().after(`
                     const percEconomy = ((actualPriceEconomy / defaultPriceEconomy) * 100).toFixed(0) + '%';
                     const percBusiness = ((actualPriceBusiness / defaultPriceBusiness) * 100).toFixed(0) + '%';
                     const percFirst = ((actualPriceFirst / defaultPriceFirst) * 100).toFixed(0) + '%';
-                    percentageString = `<br><span class='price-percentage'>${percEconomy} / ${percBusiness} / ${percFirst}</span>`;
+                    percentageString = `<br><span class='price-percentage' style="color:#999">${percEconomy} / ${percBusiness} / ${percFirst}</span>`;
                 } else {
-                    percentageString = `<br><span class='price-percentage'>N/A</span>`;
+                    percentageString = `<br><span class='price-percentage' style="color:#999">N/A</span>`;
                 }
 
                 var $row = $("<div class='table-row'>" +
