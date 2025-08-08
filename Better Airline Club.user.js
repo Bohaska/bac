@@ -2262,7 +2262,6 @@ $("#airplaneModelDetails #speed").parent().after(`
 (function() {
     'use strict';
 
-    // --- GLOBAL CONSTANTS ---
     const modifierBrackets = [
         [200, 0.25],
         [800, 0.125],
@@ -2290,17 +2289,9 @@ $("#airplaneModelDetails #speed").parent().after(`
         FIRST: { priceMultiplier: 9 }
     });
 
-    /**
-     * Computes the standard price for a flight link in JavaScript.
-     * This is a direct translation of the Scala `computeStandardPrice` function.
-     * @param {number} distance - The flight distance.
-     * @param {string} flightTypeString - The raw string representation of the flight type from the API.
-     * @param {string} linkClassKey - The key for the LinkClass (e.g., 'ECONOMY').
-     * @returns {number} The calculated standard price (integer).
-     */
     function computeStandardPriceJS(distance, flightTypeString, linkClassKey) {
         let remainDistance = distance;
-        let price = 100.0; 
+        let price = 100.0;
 
         let currentFlightTypeKey = null;
         for (const key in FlightType) {
@@ -2387,14 +2378,15 @@ $("#airplaneModelDetails #speed").parent().after(`
             $breakdown.find(".toAirport .touristDemand").text(toLinkClassValueString(result.toAirportTouristDemand));
 
             $("#researchSearchResult .table.links").empty();
+            $('#researchSearchResult .table.links').before('<h4>Existing Flights</h4>');
             const $headerRow = $(`
-                <div class="table-row table-header-row">
-                    <div class="cell">Airline</div>
-                    <div class="cell">Aircraft</div>
-                    <div class="cell">Price</div>
-                    <div class="cell">Capacity</div>
-                    <div class="cell">Quality</div>
-                    <div class="cell">Freq.</div>
+                <div class='table-header'>
+                    <div class="cell" style="width: 25%;"><h5>Airline</h5></div>
+                    <div class="cell" style="width: 25%;"><h5>Aircraft</h5></div>
+                    <div class="cell" style="width: 15%;"><h5>Price</h5></div>
+                    <div class="cell" style="width: 15%;"><h5>Capacity</h5></div>
+                    <div class="cell" style="width: 10%;"><h5>Quality</h5></div>
+                    <div class="cell" style="width: 10%;"><h5>Freq.</h5></div>
                 </div>
             `);
             $('#researchSearchResult .table.links').append($headerRow);
@@ -2435,19 +2427,19 @@ $("#airplaneModelDetails #speed").parent().after(`
                 }
 
                 var $row = $("<div class='table-row'>" +
-                    "<div class='cell'>" + link.airlineName + "</div>" +
-                    "<div class='cell'>" + link.modelName + "</div>" +
-                    "<div class='cell'>" + displayedPriceString + percentageString + "</div>" +
-                    "<div class='cell'>" + toLinkClassValueString(link.capacity) + "</div>" +
-                    "<div class='cell'>" + link.computedQuality + "</div>" +
-                    "<div class='cell'>" + link.frequency + "</div>" +
+                    "<div class='cell' style='width: 25%;'>" + link.airlineName + "</div>" +
+                    "<div class='cell' style='width: 25%;'>" + link.modelName + "</div>" +
+                    "<div class='cell' style='width: 15%;'>" + displayedPriceString + percentageString + "</div>" +
+                    "<div class='cell' style='width: 15%;'>" + toLinkClassValueString(link.capacity) + "</div>" +
+                    "<div class='cell' style='width: 10%;'>" + link.computedQuality + "</div>" +
+                    "<div class='cell' style='width: 10%;'>" + link.frequency + "</div>" +
                     "</div>");
                 $('#researchSearchResult .table.links').append($row);
                 usedModels.push(link.modelId);
             });
 
             if (result.links.length == 0) {
-                $('#researchSearchResult .table.links').append("<div class='table-row'><div class='cell'>-</div><div class='cell'>-</div><div class='cell'>-</div><div class='cell'>-</div><div class='cell'>-</div><div class='cell'>-</div></div>");
+                $('#researchSearchResult .table.links').append("<div class='table-row'><div class='cell' style='width: 25%;'>-</div><div class='cell' style='width: 25%;'>-</div><div class='cell' style='width: 15%;'>-</div><div class='cell' style='width: 15%;'>-</div><div class='cell' style='width: 10%;'>-</div><div class='cell' style='width: 10%;'>-</div></div>");
             }
             assignAirlineColors(result.consumptions, "airlineId");
             plotPie(result.consumptions, null, $("#researchSearchResult .linksPie"), "airlineName", "soldSeats");
