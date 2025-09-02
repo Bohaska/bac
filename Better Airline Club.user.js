@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         [BETA] BAC with H/T/D/T
 // @namespace    http://tampermonkey.net/
-// @version      2.1.7
+// @version      2.1.8
 // @description  Enhances airline-club.com and v2.airline-club.com airline management game (protip: Sign into your 2 accounts with one on each domain to avoid extra logout/login). Install this script with automatic updates by first installing TamperMonkey/ViolentMonkey/GreaseMonkey and installing it as a userscript.
 // @author       Maintained by Fly or die (BAC by Aphix/Torus @ https://gist.github.com/aphix/fdeeefbc4bef1ec580d72639bbc05f2d) (original "Cost Per PAX" portion by Alrianne @ https://github.com/wolfnether/Airline_Club_Mod/) (Service funding cost by Toast @ https://pastebin.com/9QrdnNKr) (With help from Gemini 2.0 and 2.5)
 // @match        https://*.airline-club.com/*
@@ -1733,26 +1733,69 @@ $(document).ready(() => setTimeout(() => launch(), 1000));
 // Begin Cost per PAX
 console.log("Plane score script loading");
 
-function calcFlightTime(plane, distance){
+// New constants from the provided formula
+const FUEL_UNIT_COST = 0.0043;
+const MAX_ASCEND_DISTANCE_1 = 180;
+const MAX_ASCEND_DISTANCE_2 = 250;
+const MAX_ASCEND_DISTANCE_3 = 1000;
+const ASCEND_FUEL_BURN_MULTIPLIER_1 = 32;
+const ASCEND_FUEL_BURN_MULTIPLIER_2 = 13;
+const ASCEND_FUEL_BURN_MULTIPLIER_3 = 2;
+
+function calcFlightTime(plane, distance) {
     let min = Math.min;
     let max = Math.max;
     let speed = plane.speed * (plane.airplaneType.toUpperCase() == "SUPERSONIC" ? 1.5 : 1);
     let a = min(distance, 300);
-    let b = min(max(0, distance-a), 400);
-    let c = min(max(0, distance-(a+b)), 400);
-    let d = max(0, distance-(a+b+c));
+    let b = min(max(0, distance - a), 400);
+    let c = min(max(0, distance - (a + b)), 400);
+    let d = max(0, distance - (a + b + c));
 
     let time_flight = a / min(speed, 350) + b / min(speed, 500) + c / min(speed, 700) + d / speed;
     return time_flight * 60;
 }
 
-function calcFuelBurn(plane, distance){
-    let timeFlight = calcFlightTime(plane, distance);
-    if (timeFlight > 1.5){
-        return plane.fuelBurn * (495 + timeFlight);
+function computeFuelCost(fuelBurn, distance, frequency) {
+    let baseCost = 0;
+
+    if (distance <= MAX_ASCEND_DISTANCE_1 * 2) {
+        // Condition 1: Short distance
+        let ascendDistance = distance / 2;
+        let descendDistance = distance / 2;
+        baseCost = (fuelBurn * ASCEND_FUEL_BURN_MULTIPLIER_1 * ascendDistance + fuelBurn * descendDistance);
+    } else if (distance <= MAX_ASCEND_DISTANCE_2 * 2) {
+        // Condition 2: Medium distance
+        let ascendDistance1 = MAX_ASCEND_DISTANCE_1;
+        let ascendDistance2 = distance / 2 - ascendDistance1;
+        let cruiseDescendDistance = distance - ascendDistance1 - ascendDistance2;
+        baseCost = (fuelBurn * ASCEND_FUEL_BURN_MULTIPLIER_1 * ascendDistance1 +
+                    fuelBurn * ASCEND_FUEL_BURN_MULTIPLIER_2 * ascendDistance2 +
+                    fuelBurn * cruiseDescendDistance);
+    } else if (distance <= MAX_ASCEND_DISTANCE_3 * 2) {
+        // Condition 3: Medium-Long distance (New)
+        let ascendDistance1 = MAX_ASCEND_DISTANCE_1;
+        let ascendDistance2 = MAX_ASCEND_DISTANCE_2;
+        let ascendDistance3 = distance / 2 - ascendDistance1 - ascendDistance2;
+        let cruiseDescendDistance = distance - ascendDistance1 - ascendDistance2 - ascendDistance3;
+        baseCost = (fuelBurn * ASCEND_FUEL_BURN_MULTIPLIER_1 * ascendDistance1 +
+                    fuelBurn * ASCEND_FUEL_BURN_MULTIPLIER_2 * ascendDistance2 +
+                    fuelBurn * ASCEND_FUEL_BURN_MULTIPLIER_3 * ascendDistance3 +
+                    fuelBurn * cruiseDescendDistance);
     } else {
-        return plane.fuelBurn * timeFlight * 5.5;
+        // Condition 4: Long distance
+        let ascendDistance1 = MAX_ASCEND_DISTANCE_1;
+        let ascendDistance2 = MAX_ASCEND_DISTANCE_2;
+        let ascendDistance3 = MAX_ASCEND_DISTANCE_3;
+        let cruiseDescendDistance = distance - ascendDistance1 - ascendDistance2 - ascendDistance3;
+        baseCost = (fuelBurn * ASCEND_FUEL_BURN_MULTIPLIER_1 * ascendDistance1 +
+                    fuelBurn * ASCEND_FUEL_BURN_MULTIPLIER_2 * ascendDistance2 +
+                    fuelBurn * ASCEND_FUEL_BURN_MULTIPLIER_3 * ascendDistance3 +
+                    fuelBurn * cruiseDescendDistance);
     }
+
+    let totalFuelCost = baseCost * FUEL_UNIT_COST * frequency;
+
+    return Math.floor(totalFuelCost);
 }
 
 function _getPlaneCategoryFor(plane) {
@@ -1820,10 +1863,8 @@ unsafeWindow.updateAirplaneModelTable = function(sortProperty, sortOrder) {
         let inflight_cost = (20 + 8 * flightDuration / 60) * plane.capacity * 2;
 
         plane.max_rotation = frequency;
-        plane.fbpf = calcFuelBurn(plane, distance);
-        plane.fbpp = plane.fbpf / plane.capacity;
-        plane.fbpw = plane.fbpf * plane.max_rotation;
-        plane.fuel_total = ((plane.fbpf * 0.08 + airport_fee + inflight_cost + crew_cost) * plane.max_rotation + depreciationRate + maintenance);
+        plane.fbpf = computeFuelCost(plane.fuelBurn, distance, 1);
+        plane.fuel_total = ((plane.fbpf + airport_fee + inflight_cost + crew_cost) * plane.max_rotation + depreciationRate + maintenance);
         plane.cpp = plane.fuel_total / (plane.capacity * plane.max_rotation);
         plane.max_capacity = plane.capacity * plane.max_rotation;
 
@@ -2173,14 +2214,7 @@ unsafeWindow.updateModelInfo = function(modelId) {
         maintenance += model.capacity * 100 * utilisation;
     }
 
-    let fuelCost = frequency;
-
-    if (linkModel.duration <= 90){
-        fuelCost *= model.fuelBurn * linkModel.duration * 5.5 * 0.08;
-    }else{
-        fuelCost *= model.fuelBurn * (linkModel.duration + 495) * 0.08;
-    }
-
+    let fuelCost = computeFuelCost(model.fuelBurn, activeLink.distance, frequency);
     let crewCost = model.capacity * durationInHour * 12 * frequency;
     let airportFees = (baseSlotFee * plane_category + (Math.min(3, airportTo.size) + Math.min(3, airportFrom.size)) * model.capacity) * frequency;
     let servicesCost = (20 + serviceLevelCost * durationInHour) * model.capacity * 2 * frequency;
@@ -2378,7 +2412,6 @@ $("#airplaneModelDetails #speed").parent().after(`
             $breakdown.find(".toAirport .touristDemand").text(toLinkClassValueString(result.toAirportTouristDemand));
 
             $("#researchSearchResult .table.links").empty();
-            $('#researchSearchResult .table.links').before('<h4>Existing Flights</h4>');
             const $headerRow = $(`
                 <div class='table-header'>
                     <div class="cell" style="width: 25%;"><h5>Airline</h5></div>
@@ -2522,7 +2555,7 @@ function _genericUpdateModelInfo(modelId, routeInfo, containerSelector, serviceL
 
     let depreciationRate = Math.floor(model.price * (100 / (model.lifespan * 3) * (1 + 2 * planeUtilisation) / 100) * utilisation);
     let maintenance = model.capacity * 100 * utilisation;
-    let fuelCost = calcFuelBurn(model, routeInfo.distance) * 0.08 * frequency;
+    let fuelCost = computeFuelCost(model.fuelBurn, frequency, routeInfo.distance);
     let crewCost = model.capacity * durationInHour * 12 * frequency;
     let airportFees = (baseSlotFee * plane_category + (Math.min(3, airportTo.size) + Math.min(3, airportFrom.size)) * model.capacity) * frequency;
     let servicesCost = (20 + serviceLevelCost * durationInHour) * model.capacity * 2 * frequency;
