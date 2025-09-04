@@ -2378,7 +2378,6 @@ $("#airplaneModelDetails #speed").parent().after(`
             $breakdown.find(".toAirport .touristDemand").text(toLinkClassValueString(result.toAirportTouristDemand));
 
             $("#researchSearchResult .table.links").empty();
-            $('#researchSearchResult .table.links').before('<h4>Existing Flights</h4>');
             const $headerRow = $(`
                 <div class='table-header'>
                     <div class="cell" style="width: 25%;"><h5>Airline</h5></div>
